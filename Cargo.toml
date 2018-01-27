@@ -1,5 +1,5 @@
 [package]
-name = "importer-ws-server"
+name = "server-websockets"
 version = "0.1.0"
 authors = ["JB Dumont <jbmdumont@gmail.com>"]
 
