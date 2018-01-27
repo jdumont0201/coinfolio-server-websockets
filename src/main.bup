@@ -1,0 +1,179 @@
+extern crate time;
+extern crate chrono;
+
+use time::precise_time_ns;
+use std::thread;
+use std::env;
+use std::fs::File;
+use std::io::prelude::*;
+use chrono::prelude::*;
+use chrono::offset::LocalResult;
+use std::collections::HashMap;
+
+extern crate ws;
+
+use ws::{listen, connect, Handler, Sender, Result, Message, CloseCode};
+use std::rc::Rc;
+use std::cell::Cell;
+use std::cell::RefCell;
+
+type Registry = Rc<RefCell<HashMap<usize, ws::Sender>>>;
+
+//static HashMap<String,String> = HashMap::new(1);
+struct Client {
+    out: Sender,
+    //id:usize,
+    //registry: Registry,//clients:Rc<RefCell<std::vec::Vec<Sender>>>
+}
+
+impl Handler for Client {
+    fn on_open(&mut self, _: ws::Handshake) -> Result<()> {
+        println!("broker opened");
+        //  self.registry.borrow_mut().insert(self.id, self.out.clone());
+        //self.out.send("Broker opened")
+        Ok(())
+    }
+    fn on_message(&mut self, msg: Message) -> Result<()> {
+        self.out.close(CloseCode::Normal)
+    }
+}
+
+struct Server {
+    out: Sender,
+    count: Rc<Cell<u32>>,
+    counter: usize,
+    //children:Rc<Cell<std::vec::Vec<std::thread::JoinHandle<()>>>>
+}
+
+fn concat(path: &str, file: &str) -> String {
+    let mut owned_str: String = "".to_owned();
+    owned_str.push_str(path);
+    owned_str.push_str(file);
+    owned_str.push_str(".csv");
+    owned_str
+}
+
+fn get_ws_url(broker: &str, pair: &str, interval: &str) -> String {
+    if broker == "binance" {
+        let mut s = "wss://stream.binance.com:9443/ws/".to_owned();
+        let pairl = pair.to_lowercase();
+        s.push_str(&pairl);
+        s.push_str("@kline_");
+        s.push_str(&interval);
+        s
+    } else {
+        " ".to_owned()
+    }
+}
+
+static mut counter: usize = 0;
+
+fn get_ws_id(broker: &str, pair: &str, interval: &str) -> String {
+    let mut s = broker.to_string();
+    s.push_str("-");
+    s.push_str(&pair);
+    s.push_str("-");
+    s.push_str(&interval);
+    s
+}
+
+impl Handler for Server {
+    fn on_open(&mut self, hs: ws::Handshake) -> Result<()> {
+        let path = hs.request.resource();
+        let pathsplit: Vec<&str> = path.split("/").collect();
+        let broker: &str = pathsplit[1];
+        let pair: &str = pathsplit[2];
+        let interval: &str = pathsplit[3];
+        println!("New user connection : broker {} symbol{} interval{}", broker, pair, interval);
+
+        //try connect to exchange
+        let url = get_ws_url(broker, pair, interval);
+        //let server_registry = Rc::new(RefCell::new(HashMap::new()));
+        //let clients = Rc::new(RefCell::new(vec!(&self.out)));
+        let alreadyOpen = false;
+        let id = self.counter;//get_ws_id(broker,pair,interval);
+        if alreadyOpen {} else {
+            //counter=counter+1;
+            println!("  Try connect to exchange {}", url);
+            //self.children.borrow_mut().push(
+            let mut children = vec![];
+            //let mut children = Rc::new(Cell::new(vec![]));
+            children.push(thread::spawn(move || {
+                    println!("  New thread {}", url);
+                connect(url, |out| {
+                    out.send("Hello WebSocket").unwrap();
+
+                move |msg| {
+                    println!("Got message: {}", msg);
+                    out.close(CloseCode::Normal)
+                }
+                }).unwrap();
+                println!("  New thread done ");
+
+            }));
+            for child in children {
+                let _ = child.join();
+            }
+            //);
+        }
+        println!("  Tried ");
+
+        self.out.send("{\"ok\":\"true\"}")
+        //Ok(self.count.set(self.count.get() + 1))
+    }
+
+    fn on_message(&mut self, msg: Message) -> Result<()> {
+        Ok(())
+    }
+
+    fn on_close(&mut self, code: CloseCode, reason: &str) {
+        match code {
+            CloseCode::Normal => println!("The client is done with the connection."),
+            CloseCode::Away => println!("The client is leaving the site."),
+            CloseCode::Abnormal => println!("Closing handshake failed! Unable to obtain closing status from client."),
+            CloseCode::Protocol => println!("protocol"),
+            CloseCode::Unsupported => println!("Unsupported"),
+            CloseCode::Status => println!("Status"),
+            CloseCode::Abnormal => println!("Abnormal"),
+            CloseCode::Invalid => println!("Invalid"),
+            CloseCode::Protocol => println!("protocol"),
+            CloseCode::Policy => println!("Policy"),
+            CloseCode::Size => println!("Size"),
+            CloseCode::Extension => println!("Extension"),
+            CloseCode::Protocol => println!("protocol"),
+            CloseCode::Restart => println!("Restart"),
+            CloseCode::Again => println!("Again"),
+
+            _ => println!("CLOSE The client encountered an error: {}", reason),
+        }
+    }
+    fn on_error(&mut self, err: ws::Error) {
+        println!("The server encountered an error: {:?}", err);
+    }
+}
+
+
+//thread_local!(static CACHE :HashMap<String,String>=HashMap::new());
+
+fn main() {
+    static ws_port: i32 = 3014;
+    let mut children = vec![];
+    //let mut children = Rc::new(Cell::new(vec![]));
+    children.push(thread::spawn(move || {
+        let count = Rc::new(Cell::new(0));
+        let mut id_counter = 0;
+        if let Err(error) = listen("127.0.0.1:3014", |out| Server {
+            out: out,
+            counter: id_counter,
+            count: count.clone()
+            //    ,children:children
+        }) {
+            // Inform the user of failure
+            println!("Failed to create WebSocket due to {:?}", error);
+        } else {}
+    }));
+    for child in children {
+        let _ = child.join();
+    }
+}
+

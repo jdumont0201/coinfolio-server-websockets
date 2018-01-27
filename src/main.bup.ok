@@ -1,0 +1,310 @@
+extern crate time;
+extern crate chrono;
+
+use time::precise_time_ns;
+use std::thread;
+use std::env;
+use std::fs::File;
+use std::io::prelude::*;
+use chrono::prelude::*;
+use chrono::offset::LocalResult;
+use std::collections::HashMap;
+
+extern crate ws;
+
+use ws::{listen, connect, Handler, Sender, Result, Message, CloseCode};
+use std::rc::Rc;
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::sync::MutexGuard;
+use std::cell::Cell;
+use std::cell::RefCell;
+
+type Registry = Arc<Mutex<Option<HashMap<u32, ws::Sender>>>>;
+//type Registry = Arc<Mutex<HashMap<usize, ws::Sender>>>;
+
+struct Client {
+    out: Sender,
+    //id:usize,
+    room_id: Option<String>,
+    //detailed_dispatch: Mutex<HashMap<u32, bool>>,
+
+    registry: Registry,//clients:Rc<RefCell<std::vec::Vec<Sender>>>
+}
+
+impl Handler for Client {
+    fn on_open(&mut self, _: ws::Handshake) -> Result<()> {
+        if let Some(ref idd) = self.room_id {
+            println!("broker opened {}", idd);
+            let mut mutex = self.registry.lock().unwrap();
+            if let Some(ref mut o) = *mutex {
+                //let n = o.len();
+                //println!("confirm open n  ");
+//            self.out.broadcast("{\"created\":\"tfrue\"}").unwrap();
+                for (id, ref sender) in o.iter() {
+                    //println!("[{}] send confirm open", id);
+                    if let Ok(rr) = sender.send("{\"created\":\"true\"}") {
+                        //  println!("send confirm open ok");
+                    } else {
+                        // println!("send confirm open err");
+                    }
+                }
+                Ok(())
+            } else {
+                Ok(())
+            }
+        } else {
+            Ok(())
+        }
+    }
+    fn on_message(&mut self, msg: Message) -> Result<()> {
+        //println!("msg {}", msg);
+        if let Ok(mut mu) = self.registry.lock() {
+            //println!("  lock ok");
+            if let Some(ref mut o) = *mu {
+                //let  outs:std::vec::Vec<ws::Sender>=*mutex;
+                // let n = o.len();
+                //println!("confirm open n  ");
+                for (id, ref sender) in o.iter() {
+                    let m = msg.to_string().to_owned();
+                    //println!("  senc confirm {}", id);
+                    if let Ok(rr) = sender.broadcast(m) {
+                        println!("  senc confirm ok {}", id);
+                        if let Ok(_ping_) = sender.pong(vec!(0)) {
+                            println!("  ping ok {}", id);
+                        } else {
+                            println!("  ping closed {}", id);
+                        }
+                    } else {
+                        //  println!("  senc confirm err");
+                    }
+                }
+                Ok(())
+            } else {
+                Ok(())
+            }
+        } else {
+            println!("err lock msg");
+            Ok(())
+        }
+    }
+}
+
+struct Server {
+    out: Sender,
+    count: Rc<Cell<u32>>,
+    room_counter: Rc<RefCell<HashMap<String, u8>>>,
+    user_room: Rc<RefCell<HashMap<u32, String>>>,
+    detailed_dispatch: Arc<RefCell<HashMap<String,Mutex<HashMap<u32, bool>>>>>,
+    id: u32,
+
+    child: Option<std::thread::JoinHandle<()>>,
+    //id: usize,
+    //children:Rc<Cell<std::vec::Vec<std::thread::JoinHandle<()>>>>
+}
+
+fn concat(path: &str, file: &str) -> String {
+    let mut owned_str: String = "".to_owned();
+    owned_str.push_str(path);
+    owned_str.push_str(file);
+    owned_str.push_str(".csv");
+    owned_str
+}
+
+fn get_ws_url(broker: &str, pair: &str, interval: &str) -> String {
+    if broker == "binance" {
+        let mut s = "wss://stream.binance.com:9443/ws/".to_owned();
+        let pairl = pair.to_lowercase();
+        s.push_str(&pairl);
+        s.push_str("@kline_");
+        s.push_str(&interval);
+        s
+    } else {
+        " ".to_owned()
+    }
+}
+
+static mut counter: usize = 0;
+
+fn get_ws_id(broker: &str, pair: &str, interval: &str) -> String {
+    let mut s = broker.to_string();
+    s.push_str("-");
+    s.push_str(&pair);
+    s.push_str("-");
+    s.push_str(&interval);
+    s
+}
+
+fn get_new_hash(id: u32, val: bool) -> HashMap<u32, bool> {
+    let mut A: HashMap<u32, bool> = HashMap::new();
+    A.insert(id, val);
+    A
+}
+impl Server {
+    fn update_room_count(&mut self, room_id:String){
+        println!("Update room count");
+        let mut A = self.room_counter.borrow_mut();
+        let mut co = 0;
+        if let Some(rc) = A.get(&room_id) {
+            println!("Room has a count {}", rc);
+            co = *rc;
+        } else {
+            println!("Room has no count");
+        }
+        A.insert(room_id, co);
+    }
+    fn update_user_room(&mut self,room_id:String){
+        //update user room
+        println!("Update user room");
+
+        let mut AA = self.user_room.borrow_mut();
+        if let None = AA.get(&self.id) {
+            //self.room_counter.borrow_mut().set(room_count);
+        } else {
+            //elf.room_counter.borrow_mut().set(room_count);
+        }
+        AA.insert(self.id, room_id);
+
+    }
+}
+impl Handler for Server {
+    fn on_open(&mut self, hs: ws::Handshake) -> Result<()> {
+        let path = hs.request.resource();
+        let pathsplit: Vec<&str> = path.split("/").collect();
+        let broker: &str = pathsplit[1];
+        let pair: &str = pathsplit[2];
+        let interval: &str = pathsplit[3];
+        println!("User {:?}/{:?} connection : broker {} symbol{} interval{}", self.id, self.count, broker, pair, interval);
+
+        println!("Update total count");
+        self.count.set(self.count.get() + 1);
+
+
+        let url = get_ws_url(broker, pair, interval);
+
+        let room_id = get_ws_id(broker, pair, interval).to_owned();
+        self.update_room_count(room_id);
+
+        let room_id = get_ws_id(broker, pair, interval).to_owned();
+        self.update_user_room(room_id);
+
+
+        //update is connected
+        let room_id = get_ws_id(broker, pair, interval).to_owned();
+        let mut CC = self.detailed_dispatch.borrow_mut();
+        let Z=CC.get(&room_id);
+        if let Some(mut ZZ) = Z  {
+            //let mut yy:MutexGuard<HashMap<u32, bool>> = ZZ.lock().unwrap();
+            let mut y:HashMap<u32, bool> = ZZ.lock().unwrap().clone();
+            //let mut y: HashMap<u32, bool> = yy.lock().unwrap();
+            y.insert(self.id, true);
+        }
+
+
+        //let HM=self.detailed_dispatch.borrow_mut().get(&room_id).unwrap().lock().unwrap().clone();
+
+        let mut B = HashMap::new();
+        let user_id = self.count.get();
+        B.insert(user_id, self.out.clone());
+        //A.insert(room_id,B);
+        let clients_registry = Arc::new(Mutex::new(Some(B)));
+        let alreadyOpen = false;
+        let id = Some(get_ws_id(broker, pair, interval).to_owned());
+        if alreadyOpen {} else {
+            println!("  Try connect to exchange {}", url);
+            self.child = Some(thread::spawn(move || {
+           //        let U= HM.clone();
+                println!("  New thread {} ", url);
+                connect(url, |out2| Client {
+                    out: out2,
+                    room_id: id.clone(),
+                    registry: clients_registry.clone(),
+                    //detailed_dispatch:U.lock().unwrap()//self.detailed_dispatch.clone()
+                    //room_count:self.user_room.clone()
+                }).unwrap();
+                println!("  New thread done ");
+            }));
+
+        }
+        println!("  Tried ");
+        self.out.send("open done")
+
+        //Ok(self.count.set(self.count.get() + 1))
+    }
+
+    fn on_message(&mut self, msg: Message) -> Result<()> {
+        println!("msg {}", msg);
+        //println!("The number of live connections is {:?}", self.count.get());
+        self.out.send(format!("You are user {} on {:?}", self.id, self.count))
+    }
+
+    fn on_close(&mut self, code: CloseCode, reason: &str) {
+        match code {
+            CloseCode::Normal => println!("The client is done with the connection."),
+            CloseCode::Away => {
+                println!("The client is leaving the site. Update room count");
+                let mut A = self.user_room.borrow_mut();
+                if let Some(room) = A.get(&self.id) {
+                    let mut B = self.room_counter.borrow_mut();
+                    let mut has_count = false;
+                    let mut co = 0;
+                    if let Some(count) = B.get(room) {
+                        has_count = true;
+                        co = *count;
+                    }
+                    if has_count {
+                        B.insert(room.to_string(), co);
+                    }
+                }
+            }
+            CloseCode::Abnormal => println!("Closing handshake failed! Unable to obtain closing status from client."),
+            CloseCode::Protocol => println!("protocol"),
+            CloseCode::Unsupported => println!("Unsupported"),
+            CloseCode::Status => println!("Status"),
+            CloseCode::Abnormal => println!("Abnormal"),
+            CloseCode::Invalid => println!("Invalid"),
+            CloseCode::Protocol => println!("protocol"),
+            CloseCode::Policy => println!("Policy"),
+            CloseCode::Size => println!("Size"),
+            CloseCode::Extension => println!("Extension"),
+            CloseCode::Protocol => println!("protocol"),
+            CloseCode::Restart => println!("Restart"),
+            CloseCode::Again => println!("Again"),
+
+            _ => println!("CLOSE The client encountered an error: {}", reason),
+        }
+    }
+    fn on_error(&mut self, err: ws::Error) {
+        println!("The server encountered an error: {:?}", err);
+    }
+}
+
+fn main() {
+    static ws_port: i32 = 3014;
+    let count = Rc::new(Cell::new(0));
+
+    let A: HashMap<String, u8> = HashMap::new();
+    let room_counter = Rc::new(RefCell::new(A));
+
+    let AA: HashMap<u32, String> = HashMap::new();
+    let user_room = Rc::new(RefCell::new(AA));
+
+
+    let AAC: HashMap<String, Mutex<HashMap<u32, bool>>> = HashMap::new();
+    let detailed_dispatch = Arc::new(RefCell::new(AAC));
+
+
+    if let Err(error) = listen("127.0.0.1:3014", |out| Server {
+        out: out,
+        //id: id_counter + 1,
+        id: count.get(),
+        child: None,
+        count: count.clone(),
+        room_counter: room_counter.clone(),
+        user_room: user_room.clone(),
+        detailed_dispatch: detailed_dispatch.clone(),
+    }) {
+        println!("Failed to create WebSocket due to {:?}", error);
+    }
+}
+
