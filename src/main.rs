@@ -339,8 +339,8 @@ fn main() {
     let AACC: HashMap<RoomNB, Vec<Pair>> = HashMap::new();  // room id -> vec of {user id and sender out}
     let room_users: RoomUsersRegistry = Arc::new(Mutex::new(Some(AACC)));
 
-    println!("Try listen {}",2014);
-    if let Err(error) = listen("localhost:3014", |out| Server {
+    println!("Try listen {}",3014);
+    if let Err(error) = listen("0.0.0.0:3014", |out| Server {
         out: out,
         //id: id_counter + 1,
         id: count.get(),
