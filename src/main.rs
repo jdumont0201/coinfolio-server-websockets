@@ -316,6 +316,7 @@ impl Handler for Server {
 }
 
 fn main() {
+    println!("Coinamics Server Websockets");
     static ws_port: i32 = 3014;
     let count = Rc::new(Cell::new(0));
     let c: u32 = 0;
@@ -338,8 +339,8 @@ fn main() {
     let AACC: HashMap<RoomNB, Vec<Pair>> = HashMap::new();  // room id -> vec of {user id and sender out}
     let room_users: RoomUsersRegistry = Arc::new(Mutex::new(Some(AACC)));
 
-
-    if let Err(error) = listen("127.0.0.1:3014", |out| Server {
+    println!("Try listen {}",2014);
+    if let Err(error) = listen("localhost:3014", |out| Server {
         out: out,
         //id: id_counter + 1,
         id: count.get(),
