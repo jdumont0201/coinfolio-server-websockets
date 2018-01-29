@@ -28,7 +28,6 @@ struct Client {
     room_id: Option<String>,
     room_nb: RoomNB,
     user_isconnected: UserStatusRegistry,
-
     room_users: RoomUsersRegistry,
 }
 struct Pair {
@@ -100,21 +99,21 @@ impl Handler for Client {
 impl Server {
     fn update_room_count(&mut self, room_id: String) {
         println!("* Update room count");
-        let mut A = self.room_counter.borrow_mut();
+        let mut a = self.room_counter.borrow_mut();
         let mut co = 0;
-        if let Some(rc) = A.get(&room_id) {
+        if let Some(rc) = a.get(&room_id) {
             println!("Room has a count {}", rc);
             co = *rc;
         } else {
             println!("Room has no count");
         }
-        A.insert(room_id, co);
+        a.insert(room_id, co);
     }
     fn get_room_nb_by_id(&mut self, room_id: String) -> Option<u32> {
         println!("* Get room nb by id");
-        let mut A = self.room_nbs.borrow_mut();
+        let mut a = self.room_nbs.borrow_mut();
 
-        if let Some(rc) = A.get(&room_id) {
+        if let Some(rc) = a.get(&room_id) {
             println!("Room nb for {} is {}", room_id, *rc);
             Some(*rc)
         } else {
@@ -124,26 +123,26 @@ impl Server {
     }
     fn set_room_nb_by_id(&mut self, room_id: String, room_nb: u32) {
         println!("* Set room nb ");
-        let mut A = self.room_nbs.borrow_mut();
-        A.insert(room_id, room_nb);
+        let mut a = self.room_nbs.borrow_mut();
+        a.insert(room_id, room_nb);
     }
     fn update_user_room(&mut self, room_id: String) {
         //update user room
         println!("* Update user room");
-        let mut AA = self.user_room.borrow_mut();
-        if let None = AA.get(&self.id) {} else {}
-        AA.insert(self.id, room_id);
+        let mut aa = self.user_room.borrow_mut();
+        if let None = aa.get(&self.id) {} else {}
+        aa.insert(self.id, room_id);
     }
     fn update_user_isconnected(&mut self) {
         //update user room
         println!("* Update user isconnected SET {} TRUE", self.id);
-        let mut AA = self.user_isconnected.lock().unwrap();
-        AA.insert(self.id, true);
+        let mut aa = self.user_isconnected.lock().unwrap();
+        aa.insert(self.id, true);
     }
     fn decrement_room_count(&mut self) {
         println!(" * decrement room_count");
-        let mut A = self.user_room.borrow_mut();
-        if let Some(room) = A.get(&self.id) {
+        let mut a = self.user_room.borrow_mut();
+        if let Some(room) = a.get(&self.id) {
             let mut B = self.room_counter.borrow_mut();
             let mut has_count = false;
             let mut co = 0;
@@ -158,13 +157,13 @@ impl Server {
     }
     fn update_user_setnotconnected(&mut self) {
         println!("* Update user isconnected");
-        let mut AA = self.user_isconnected.lock().unwrap();
+        let mut aa = self.user_isconnected.lock().unwrap();
         let mut exists = false;
-        if let Some(AAA) = AA.get(&self.id) {
+        if let Some(aaa) = aa.get(&self.id) {
             exists = true;
         } else {}
         if exists {
-            AA.insert(self.id, false);
+            aa.insert(self.id, false);
         }
     }
     fn update_room_users(&mut self, room_nb: RoomNB) -> bool {
@@ -262,6 +261,7 @@ impl Handler for Server {
             CloseCode::Away => {
                 println!("The client is leaving the site. Update room count");
                 self.update_user_setnotconnected();
+                self.out.close(CloseCode::Normal).unwrap();
                 //self.decrement_room_count();
             }
             CloseCode::Abnormal => println!("Closing handshake failed! Unable to obtain closing status from client."),
@@ -270,6 +270,7 @@ impl Handler for Server {
             CloseCode::Status => {
                 println!("Status");
                 self.update_user_setnotconnected();
+                self.out.close(CloseCode::Normal).unwrap();
             },
             CloseCode::Abnormal => println!("Abnormal"),
             CloseCode::Invalid => println!("Invalid"),
@@ -296,20 +297,20 @@ fn main() {
     let c: u32 = 0;
     let room_count = Rc::new(Cell::new(c));
 
-    let A: HashMap<String, u8> = HashMap::new(); // room id -> number of connected users in the room
-    let room_counter = Rc::new(RefCell::new(A));
+    let a: HashMap<String, u8> = HashMap::new(); // room id -> number of connected users in the room
+    let room_counter = Rc::new(RefCell::new(a));
 
-    let A: HashMap<String, RoomNB> = HashMap::new();// room id -> room nb
-    let room_nbs = Rc::new(RefCell::new(A));
+    let ab: HashMap<String, RoomNB> = HashMap::new();// room id -> room nb
+    let room_nbs = Rc::new(RefCell::new(ab));
 
-    let AA: HashMap<u32, String> = HashMap::new(); // user id -> room_id of his room
-    let user_room = Rc::new(RefCell::new(AA));
+    let ac: HashMap<u32, String> = HashMap::new(); // user id -> room_id of his room
+    let user_room = Rc::new(RefCell::new(ac));
 
-    let AAC: HashMap<u32, bool> = HashMap::new();   // room id -> status connected true or false
-    let detailed_dispatch: UserStatusRegistry = Arc::new(Mutex::new(AAC));
+    let ad: HashMap<u32, bool> = HashMap::new();   // room id -> status connected true or false
+    let detailed_dispatch: UserStatusRegistry = Arc::new(Mutex::new(ad));
 
-    let AACC: HashMap<RoomNB, Vec<Pair>> = HashMap::new();  // room id -> vec of {user id and sender out}
-    let room_users: RoomUsersRegistry = Arc::new(Mutex::new(Some(AACC)));
+    let ae: HashMap<RoomNB, Vec<Pair>> = HashMap::new();  // room id -> vec of {user id and sender out}
+    let room_users: RoomUsersRegistry = Arc::new(Mutex::new(Some(ae)));
 
     println!("Try listen {}",3014);
     if let Err(error) = listen("0.0.0.0:3014", |out| Server {
@@ -330,13 +331,6 @@ fn main() {
 }
 
 
-fn concat(path: &str, file: &str) -> String {
-    let mut owned_str: String = "".to_owned();
-    owned_str.push_str(path);
-    owned_str.push_str(file);
-    owned_str.push_str(".csv");
-    owned_str
-}
 
 fn get_ws_url(broker: &str, pair: &str, interval: &str) -> String {
     if broker == "binance" {
