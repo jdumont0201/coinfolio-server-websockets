@@ -27,7 +27,7 @@ struct Client {
     out: Sender,
     room_id: Option<String>,
     room_nb: RoomNB,
-    user_status: UserStatusRegistry,
+    user_isconnected: UserStatusRegistry,
 
     room_users: RoomUsersRegistry,
 }
@@ -71,18 +71,18 @@ impl Handler for Client {
                         let id = senderpair.id;
                         let out = &senderpair.out;
                         //println!("  send to {:?}", id);
-                        let hm = self.user_status.lock().unwrap();
+                        let hm = self.user_isconnected.lock().unwrap();
                         if let Some(sta) = hm.get(&id) {
                           //  println!("    check status id={:?} {}",id, sta);
                             if *sta {
                                 if let Ok(rr) = out.send(m) {
-                                    println!("      send ok {}", id);
+                                    println!("      [{}] send ok", id);
                                 } else {
-                                    println!("      senc nok {}", id);
+                                    println!("      [{}] senc nok", id);
                                 }
                             } else {}
                         } else {
-                            println!("  check status id={:?} no status",id);
+                            println!("  [{:?}] no status",id);
                         }
                     }
                 } else {}
@@ -226,13 +226,13 @@ impl Handler for Server {
         }
 
         let id = self.id;
-        let isRoomCreation = self.update_room_users(room_nb);
-        println!("roomcreation? {}", isRoomCreation);
+        let is_room_creation = self.update_room_users(room_nb);
+        println!("roomcreation? {}", is_room_creation);
         let user_id = self.count.get();
         let id = Some(get_ws_id(broker, pair, interval).to_owned());
         let w = self.user_isconnected.clone();
         let ww = self.room_users.clone();
-        if !isRoomCreation {} else {
+        if !is_room_creation {} else {
             println!("  Try connect to exchange {}", url);
             self.child = Some(thread::spawn(move || {
                 println!("  New thread {} ", url);
@@ -241,7 +241,7 @@ impl Handler for Server {
                     room_id: id.clone(),
                     room_users: ww.clone(),
                     room_nb: room_nb.clone(),
-                    user_status: w.clone(),
+                    user_isconnected: w.clone(),
                 }).unwrap();
                 println!("  New thread done ");
             }));
@@ -291,7 +291,7 @@ impl Handler for Server {
 
 fn main() {
     println!("Coinamics Server Websockets");
-    static ws_port: i32 = 3014;
+    static WS_PORT: i32 = 3014;
     let count = Rc::new(Cell::new(0));
     let c: u32 = 0;
     let room_count = Rc::new(Cell::new(c));
