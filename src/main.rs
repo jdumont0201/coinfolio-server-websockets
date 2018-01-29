@@ -98,7 +98,7 @@ impl Handler for Client {
 
 impl Server {
     fn update_room_count(&mut self, room_id: String) {
-        println!("* Update room count");
+        println!("  * Update room count");
         let mut a = self.room_counter.borrow_mut();
         let mut co = 0;
         if let Some(rc) = a.get(&room_id) {
@@ -110,7 +110,7 @@ impl Server {
         a.insert(room_id, co);
     }
     fn get_room_nb_by_id(&mut self, room_id: String) -> Option<u32> {
-        println!("* Get room nb by id");
+        println!("  * Get room nb by id");
         let mut a = self.room_nbs.borrow_mut();
 
         if let Some(rc) = a.get(&room_id) {
@@ -122,25 +122,25 @@ impl Server {
         }
     }
     fn set_room_nb_by_id(&mut self, room_id: String, room_nb: u32) {
-        println!("* Set room nb ");
+        println!("  * Set room nb ");
         let mut a = self.room_nbs.borrow_mut();
         a.insert(room_id, room_nb);
     }
     fn update_user_room(&mut self, room_id: String) {
         //update user room
-        println!("* Update user room");
+        println!("  * Update user room");
         let mut aa = self.user_room.borrow_mut();
         if let None = aa.get(&self.id) {} else {}
         aa.insert(self.id, room_id);
     }
     fn update_user_isconnected(&mut self) {
         //update user room
-        println!("* Update user isconnected SET {} TRUE", self.id);
+        println!("  * Update user isconnected SET {} TRUE", self.id);
         let mut aa = self.user_isconnected.lock().unwrap();
         aa.insert(self.id, true);
     }
     fn decrement_room_count(&mut self) {
-        println!(" * decrement room_count");
+        println!("  * decrement room_count");
         let mut a = self.user_room.borrow_mut();
         if let Some(room) = a.get(&self.id) {
             let mut B = self.room_counter.borrow_mut();
@@ -156,7 +156,7 @@ impl Server {
         }
     }
     fn update_user_setnotconnected(&mut self) {
-        println!("* Update user isconnected");
+        println!("  * Update user isconnected");
         let mut aa = self.user_isconnected.lock().unwrap();
         let mut exists = false;
         if let Some(aaa) = aa.get(&self.id) {
@@ -178,11 +178,11 @@ impl Server {
             if (exists) {
                 let qq = q.get_mut(&room_nb).unwrap();
                 let p = Pair { id: self.id, out: self.out.clone() };
-                println!("add user {} to room {}", self.id, room_nb);
+                println!("  add user {} to room {}", self.id, room_nb);
                 qq.push(p);
             } else {
                 let p = Pair { id: self.id, out: self.out.clone() };
-                println!("create add user {} to room {}", self.id, room_nb);
+                println!("  create add user {} to room {}", self.id, room_nb);
                 q.insert(room_nb, vec!(p));
             }
         } else {}
@@ -197,9 +197,9 @@ impl Handler for Server {
         let broker: &str = pathsplit[1];
         let pair: &str = pathsplit[2];
         let interval: &str = pathsplit[3];
-        println!("User {:?}/{:?} connection : broker {} symbol{} interval{}", self.id, self.count, broker, pair, interval);
-        println!("Update total count");
-        println!("USER ID {}", self.id);
+        println!("+ User {:?}/{:?} connection : broker={} symbol={} interval={}", self.id, self.count, broker, pair, interval);
+        println!("  Update total count");
+        println!("  USER ID {}", self.id);
 
 
         let url = get_ws_url(broker, pair, interval);
@@ -226,7 +226,7 @@ impl Handler for Server {
 
         let id = self.id;
         let is_room_creation = self.update_room_users(room_nb);
-        println!("roomcreation? {}", is_room_creation);
+        println!("  roomcreation? {}", is_room_creation);
         let user_id = self.count.get();
         let id = Some(get_ws_id(broker, pair, interval).to_owned());
         let w = self.user_isconnected.clone();
@@ -245,9 +245,9 @@ impl Handler for Server {
                 println!("  New thread done ");
             }));
         }
-        println!("  Tried ");
+
         self.count.set(self.count.get() + 1);
-        self.out.send("{\"wsConnected\":\"true\"")
+        self.out.send("{\"wsConnected\":\"true\"}")
     }
 
     fn on_message(&mut self, msg: Message) -> Result<()> {
