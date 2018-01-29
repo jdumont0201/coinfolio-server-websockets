@@ -248,7 +248,7 @@ impl Handler for Server {
         }
         println!("  Tried ");
         self.count.set(self.count.get() + 1);
-        self.out.send("open done")
+        self.out.send("{\"wsConnected\":\"true\"")
     }
 
     fn on_message(&mut self, msg: Message) -> Result<()> {
