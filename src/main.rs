@@ -267,7 +267,10 @@ impl Handler for Server {
             CloseCode::Abnormal => println!("Closing handshake failed! Unable to obtain closing status from client."),
             CloseCode::Protocol => println!("protocol"),
             CloseCode::Unsupported => println!("Unsupported"),
-            CloseCode::Status => println!("Status"),
+            CloseCode::Status => {
+                println!("Status");
+                self.update_user_setnotconnected();
+            },
             CloseCode::Abnormal => println!("Abnormal"),
             CloseCode::Invalid => println!("Invalid"),
             CloseCode::Protocol => println!("protocol"),
