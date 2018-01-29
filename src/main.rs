@@ -1,5 +1,6 @@
 extern crate time;
 extern crate chrono;
+extern crate ws;
 
 use time::precise_time_ns;
 use std::thread;
@@ -9,9 +10,6 @@ use std::io::prelude::*;
 use chrono::prelude::*;
 use chrono::offset::LocalResult;
 use std::collections::HashMap;
-
-extern crate ws;
-
 use ws::{listen, connect, Handler, Sender, Result, Message, CloseCode};
 use std::rc::Rc;
 use std::sync::Arc;
@@ -25,7 +23,6 @@ type RoomNB=u32;
 type RoomUsersRegistry = Arc<Mutex<Option<HashMap<RoomNB, Vec<Pair>>>>>;
 type UserStatusRegistry = Arc<Mutex<HashMap<u32, bool>>>;
 
-
 struct Client {
     out: Sender,
     room_id: Option<String>,
@@ -34,14 +31,10 @@ struct Client {
 
     room_users: RoomUsersRegistry,
 }
-
-
 struct Pair {
-    id: u32
-    ,
+    id: u32,
     out: Sender,
 }
-
 impl Clone for Pair {
     fn clone(&self) -> Self {
         Pair {
@@ -63,50 +56,32 @@ struct Server {
     id: u32,
     child: Option<std::thread::JoinHandle<()>>,
 }
-
 impl Handler for Client {
     fn on_open(&mut self, _: ws::Handshake) -> Result<()> {
         Ok(())
     }
     fn on_message(&mut self, msg: Message) -> Result<()> {
-        //println!("msg {}", msg);
         if let Ok(mut opt) = self.room_users.lock() {
-            //println!("  lock ok");
             if let Some(ref mut hm) = *opt { //open option
-                //let  outs:std::vec::Vec<ws::Sender>=*mutex;
-                // let n = o.len();
-                //println!("confirm open n  ");
                 let room_users = hm.get(&self.room_nb);
                 if let Some(list) = room_users {
-                    //let lis:Vec<ws::Sender>=list.iter();
                     for senderpair in list.iter() {
                         let m = msg.to_string().to_owned();
 
                         let id = senderpair.id;
                         let out = &senderpair.out;
                         println!("  send to {:?}", id);
-                        println!("    check status id {:?}", id);
-
                         let hm = self.user_status.lock().unwrap();
-                        //if let  Ok(mut st) =  {
                         if let Some(sta) = hm.get(&id) {
-                            //if let Some(ref mut sta) = *st {
-                            println!("    check status = {}", sta);
-                            //send
+                            println!("    check status id={:?} {}",id, sta);
                             if *sta {
                                 if let Ok(rr) = out.send(m) {
                                     println!("      senc confirm ok {}", id);
-                                    /*if let Ok(_ping_) = out.pong(vec!(0)) {
-                                        println!("      ping ok {}", id);
-                                    } else {
-                                        println!("      ping closed {}", id);
-                                    }*/
                                 } else {
-                                    //  println!("  senc confirm err");
                                 }
                             } else {}
                         } else {
-                            println!("  check status no status");
+                            println!("  check status id={:?} no status");
                         }
                     }
                 } else {}
@@ -247,18 +222,13 @@ impl Handler for Server {
             room_nb=self.room_count.get();
             let room_id = get_ws_id(broker, pair, interval).to_owned();
             self.set_room_nb_by_id(room_id, room_nb);
-
         }
 
         let id = self.id;
-
         let isRoomCreation = self.update_room_users(room_nb);
         println!("roomcreation? {}", isRoomCreation);
         let user_id = self.count.get();
-
-
         let id = Some(get_ws_id(broker, pair, interval).to_owned());
-
         let w = self.user_isconnected.clone();
         let ww = self.room_users.clone();
         if !isRoomCreation {} else {
@@ -331,10 +301,8 @@ fn main() {
     let AA: HashMap<u32, String> = HashMap::new(); // user id -> room_id of his room
     let user_room = Rc::new(RefCell::new(AA));
 
-
     let AAC: HashMap<u32, bool> = HashMap::new();   // room id -> status connected true or false
     let detailed_dispatch: UserStatusRegistry = Arc::new(Mutex::new(AAC));
-
 
     let AACC: HashMap<RoomNB, Vec<Pair>> = HashMap::new();  // room id -> vec of {user id and sender out}
     let room_users: RoomUsersRegistry = Arc::new(Mutex::new(Some(AACC)));
@@ -351,7 +319,6 @@ fn main() {
         room_nbs: room_nbs.clone(),
         user_room: user_room.clone(),
         user_isconnected: detailed_dispatch.clone(),
-
         room_users: room_users.clone(),
     }) {
         println!("Failed to create WebSocket due to {:?}", error);
