@@ -82,7 +82,7 @@ impl Handler for Client {
                                 }
                             } else {}
                         } else {
-                            println!("  check status id={:?} no status");
+                            println!("  check status id={:?} no status",id);
                         }
                     }
                 } else {}
