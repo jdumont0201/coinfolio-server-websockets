@@ -70,14 +70,15 @@ impl Handler for Client {
 
                         let id = senderpair.id;
                         let out = &senderpair.out;
-                        println!("  send to {:?}", id);
+                        //println!("  send to {:?}", id);
                         let hm = self.user_status.lock().unwrap();
                         if let Some(sta) = hm.get(&id) {
-                            println!("    check status id={:?} {}",id, sta);
+                          //  println!("    check status id={:?} {}",id, sta);
                             if *sta {
                                 if let Ok(rr) = out.send(m) {
-                                    println!("      senc confirm ok {}", id);
+                                    println!("      send ok {}", id);
                                 } else {
+                                    println!("      senc nok {}", id);
                                 }
                             } else {}
                         } else {
