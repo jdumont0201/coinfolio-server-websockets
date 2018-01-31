@@ -110,7 +110,9 @@ pub struct StringGenericOHLC {
 impl StringGenericOHLC {
     fn to_json(&self) -> String {
         //let ts = chrono::Utc.timestamp(self.ts.timestamp() / 1000, 0).format("%Y-%m-%d %H:%M:%S");
-        let s = format!(r#"{{"ts" :"{}","o"  :{},"h"  :{},"l":{},"c":{},"v":{}}}"#, self.ts,self.o, self.h, self.l, self.c, self.v);
+        let n=self.ts.len()-3;
+        let t=self.ts[..n].to_string();
+        let s = format!(r#"{{"ts" :"{}","o"  :{},"h"  :{},"l":{},"c":{},"v":{}}}"#, t,self.o, self.h, self.l, self.c, self.v);
         s
     }
     fn to_string(&self) -> String {
