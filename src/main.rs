@@ -60,6 +60,7 @@ impl Handler for Client {
         Ok(())
     }
     fn on_message(&mut self, msg: Message) -> Result<()> {
+        let room_id=self.room_id.clone().unwrap();
         if let Ok(mut opt) = self.room_users.lock() {
             if let Some(ref mut hm) = *opt { //open option
                 let room_users = hm.get(&self.room_nb);
@@ -75,11 +76,13 @@ impl Handler for Client {
                           //  println!("    check status id={:?} {}",id, sta);
                             if *sta {
                                 if let Ok(rr) = out.send(m) {
-                                    println!("      [{}] send ok", id);
+                                    println!("      [{}] [{}] send ok", room_id,id);
                                 } else {
                                     println!("      [{}] senc nok", id);
                                 }
-                            } else {}
+                            } else {
+                                println!("      [{}] [{}] send but disc", room_id,id);
+                            }
                         } else {
                             println!("  [{:?}] no status",id);
                         }
@@ -111,7 +114,7 @@ impl Server {
     }
     fn get_room_nb_by_id(&mut self, room_id: String) -> Option<u32> {
         println!("  * Get room nb by id");
-        let mut a = self.room_nbs.borrow_mut();
+        let a = self.room_nbs.borrow_mut();
 
         if let Some(rc) = a.get(&room_id) {
             println!("Room nb for {} is {}", room_id, *rc);
@@ -141,7 +144,7 @@ impl Server {
     }
     fn decrement_room_count(&mut self) {
         println!("  * decrement room_count");
-        let mut a = self.user_room.borrow_mut();
+        let a = self.user_room.borrow_mut();
         if let Some(room) = a.get(&self.id) {
             let mut B = self.room_counter.borrow_mut();
             let mut has_count = false;
@@ -175,7 +178,7 @@ impl Server {
             } else {
                 exists = false;
             }
-            if (exists) {
+            if exists {
                 let qq = q.get_mut(&room_nb).unwrap();
                 let p = Pair { id: self.id, out: self.out.clone() };
                 println!("  add user {} to room {}", self.id, room_nb);
@@ -214,7 +217,7 @@ impl Handler for Server {
 
         let room_id = get_ws_id(broker, pair, interval).to_owned();
         let room_nb_opt = self.get_room_nb_by_id(room_id);
-        let mut room_nb:RoomNB;
+        let room_nb:RoomNB;
         if let Some(room_nb_) = room_nb_opt {
             room_nb=room_nb_;
         } else {
