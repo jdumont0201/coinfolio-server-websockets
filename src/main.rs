@@ -147,6 +147,7 @@ mod Universal {
     pub fn get_universal_msg(client:&mut super::Client, rawmsg: &String) -> Option<String> {
         let broker=&client.broker;
         if broker == "binance" {
+
             let tick: serde_json::Value = super::serde_json::from_str(&rawmsg).unwrap();
             let ts= tick["k"]["t"].to_string();
             let c= tick["k"]["c"].to_string();
@@ -163,6 +164,7 @@ mod Universal {
 
             Some(StringGenericOHLC { ts:ts,o:o,l:l,h:h,c:c, v: v }.to_json())
         } else if broker == "hitbtc" {
+            println!("{}",rawmsg);
             let tick: serde_json::Value = super::serde_json::from_str(&rawmsg).unwrap();
             if tick["result"].to_string() == "true" {
                 None
@@ -177,8 +179,8 @@ mod Universal {
                 let ts= tsi.to_string();
                 let c= tick["params"]["last"].to_string();
                 let o= tick["params"]["open"].to_string();
-                let h= tick["params"]["max"].to_string();
-                let l= tick["params"]["min"].to_string();
+                let h= tick["params"]["high"].to_string();
+                let l= tick["params"]["low"].to_string();
                 let v=tick["params"]["volume"].to_string();
                 if client.oldp != c || client.oldv != v{
                     let c= tick["params"]["last"].to_string();
