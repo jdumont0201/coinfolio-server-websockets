@@ -25,7 +25,7 @@ type RoomNB = u32;
 type RoomUsersRegistry = Arc<Mutex<Option<HashMap<RoomNB, Vec<Pair>>>>>;
 type UserStatusRegistry = Arc<Mutex<HashMap<u32, bool>>>;
 
-struct Client {
+pub struct  Client {
     out: Sender,
     room_id: Option<String>,
     room_nb: RoomNB,
@@ -33,6 +33,8 @@ struct Client {
     broker: String,
     user_isconnected: UserStatusRegistry,
     room_users: RoomUsersRegistry,
+    oldp:String,
+    oldv:String
 }
 
 struct Pair {
@@ -105,34 +107,70 @@ mod Universal {
         String(String),
     }
 
-    pub fn get_universal_msg(broker: String, rawmsg: String) -> Option<String> {
+    pub fn get_universal_msg(client:&mut super::Client, rawmsg: &String) -> Option<String> {
+        let broker=&client.broker;
         if broker == "binance" {
             let tick: serde_json::Value = super::serde_json::from_str(&rawmsg).unwrap();
-            Some(StringGenericTick { ts: tick["k"]["t"].to_string(), p: tick["k"]["c"].to_string(), v: tick["k"]["v"].to_string() }.to_json())
+            let ts= tick["k"]["t"].to_string();
+            let p= tick["k"]["c"].to_string();
+            let v=tick["k"]["v"].to_string();
+            Some(StringGenericTick { ts:ts, p:p, v: v }.to_json())
         } else if broker == "hitbtc" {
-            println!("parse {}", rawmsg);
             let tick: serde_json::Value = super::serde_json::from_str(&rawmsg).unwrap();
-            println!("p1 {} tick{} RESULT {} {} TYPE {} {}", rawmsg, tick, tick["result"], tick["result"] == true, tick["type"],tick["type"] == "update");
             if tick["result"].to_string() == "true" {
                 None
             }else if tick["type"] == "update" {
                 None
             } else {
+                //convert timestamp to int format
                 let mut tsstr = tick["params"]["timestamp"].to_string();
                 tsstr=tsstr[1..tsstr.len()-1].to_string();
-                println!("p1 {}", tsstr);
                 let tss: super::chrono::DateTime<super::chrono::Utc> = tsstr.parse::<super::chrono::DateTime<super::chrono::Utc>>().unwrap();
-                println!("p1 {}", tss);
-                //println!("  serde tss {:?}",tss);
                 let tsi: i64 = tss.timestamp() * 1000;
-                Some(StringGenericTick { ts: tsi.to_string(), p: tick["params"]["last"].to_string(), v: tick["params"]["volume"].to_string() }.to_json())
+                let ts= tsi.to_string();
+                let p= tick["params"]["last"].to_string();
+                let v=tick["params"]["volume"].to_string();
+                if client.oldp != p || client.oldv != v{
+                    let p= tick["params"]["last"].to_string();
+                    let v=tick["params"]["volume"].to_string();
+                    client.oldp=p;
+                    client.oldv=v;
+                    let p= tick["params"]["last"].to_string();
+                    let v=tick["params"]["volume"].to_string();
+                    Some(StringGenericTick { ts:ts, p:p, v: v }.to_json())
+                }else{
+                    client.oldp=p;
+                    client.oldv=v;
+                    None
+                }
+
+
             }
         } else {
             None
         }
     }
 }
-
+fn send_msg_to_user(client:&Client,senderpair:&Pair,msg2:String,room_id:String){
+    let id = senderpair.id;
+    let out = &senderpair.out;
+    //println!("  send to {:?}", id);
+    let hm = client.user_isconnected.lock().unwrap();
+    if let Some(sta) = hm.get(&id) {
+        //  println!("    check status id={:?} {}",id, sta);
+        if *sta {
+            if let Ok(_rr) = out.send(msg2) {
+                println!("      [{}] [{}] send ok", room_id, id);
+            } else {
+                println!("      [{}] senc nok", id);
+            }
+        } else {
+            println!("      [{}] [{}] send but disc", room_id, id);
+        }
+    } else {
+        println!("  [{:?}] no status", id);
+    }
+}
 struct Server {
     out: Sender,
     count: Rc<Cell<u32>>,
@@ -157,48 +195,31 @@ impl Handler for Client {
         }
     }
     fn on_message(&mut self, msg: Message) -> Result<()> {
-        let b = &self.broker;
-        let room_id = self.room_id.clone().unwrap();
-        if let Ok(mut opt) = self.room_users.lock() {
-            if let Some(ref mut hm) = *opt { //open option
-                let room_users = hm.get(&self.room_nb);
-                if let Some(list) = room_users {
-                    for senderpair in list.iter() {
-                        let m = msg.to_string().to_owned();
-                        let message: Option<String> = Universal::get_universal_msg(b.to_string(), m);
-                        match message {
-                            Some(message_) => {
-                                let id = senderpair.id;
-                                let out = &senderpair.out;
-                                //println!("  send to {:?}", id);
-                                let hm = self.user_isconnected.lock().unwrap();
-                                if let Some(sta) = hm.get(&id) {
-                                    //  println!("    check status id={:?} {}",id, sta);
-                                    if *sta {
-                                        if let Ok(_rr) = out.send(message_) {
-                                            println!("      [{}] [{}] send ok", room_id, id);
-                                        } else {
-                                            println!("      [{}] senc nok", id);
-                                        }
-                                    } else {
-                                        println!("      [{}] [{}] send but disc", room_id, id);
-                                    }
-                                } else {
-                                    println!("  [{:?}] no status", id);
-                                }
+        let m = msg.to_string().to_owned();
+        let message: Option<String> = Universal::get_universal_msg(self, &m);
+        match message {
+            Some(message_) => {
+                let mm=message_.clone();
+                let room_id = self.room_id.clone().unwrap();
+                if let Ok(mut opt) = self.room_users.lock() {
+                    if let Some(ref mut hm) = *opt { //open option
+                        let room_users = hm.get(&self.room_nb);
+                        if let Some(list) = room_users {
+                            for senderpair in list.iter() {
+                                send_msg_to_user(self,senderpair,mm.clone(),room_id.clone())
                             }
-                            None => {}
                         }
-                    }
-                } else {}
-                Ok(())
-            } else {
+                    } else {}
+                    Ok(())
+                } else {
+                    Ok(())
+                }
+            },
+            None => {
                 Ok(())
             }
-        } else {
-            println!("err unable to lock room_users");
-            Ok(())
         }
+
     }
 }
 
@@ -355,7 +376,8 @@ impl Handler for Server {
                         broker: b.clone(),
                         pair: p.clone(),
                         room_id: id.clone(),
-
+                        oldp:"".to_string(),
+                        oldv:"".to_string(),
                         room_users: ww.clone(),
                         room_nb: room_nb.clone(),
                         user_isconnected: w.clone(),
