@@ -98,8 +98,43 @@ impl StringGenericTick {
     }
 }
 
+pub struct StringGenericOHLC {
+    ts: String,
+    o: String,
+    h: String,
+    c: String,
+    l: String,
+    v: String,
+}
+
+impl StringGenericOHLC {
+    fn to_json(&self) -> String {
+        //let ts = chrono::Utc.timestamp(self.ts.timestamp() / 1000, 0).format("%Y-%m-%d %H:%M:%S");
+        let s = format!(r#"{{"ts" :"{}","o"  :"{}","h"  :"{}","l":"{}","c":"{}","v":"{}"}}"#, self.ts,self.o, self.h, self.l, self.c, self.v);
+        s
+    }
+    fn to_string(&self) -> String {
+        let mut owned_str: String = "".to_owned();
+        owned_str.push_str(&(self.ts.to_string()).to_owned());
+        owned_str.push_str(",");
+        owned_str.push_str(&(self.o.to_string()).to_owned());
+        owned_str.push_str(",");
+        owned_str.push_str(&(self.h.to_string()).to_owned());
+        owned_str.push_str(",");
+        owned_str.push_str(&(self.l.to_string()).to_owned());
+        owned_str.push_str(",");
+        owned_str.push_str(&(self.c.to_string()).to_owned());
+        owned_str.push_str(",");
+        owned_str.push_str(&(self.v.to_string().to_owned()));
+        owned_str.push_str("\n");
+        owned_str
+    }
+}
+
+
+
 mod Universal {
-    use StringGenericTick;
+    use StringGenericOHLC;
     use serde_json;
 
 
@@ -112,9 +147,19 @@ mod Universal {
         if broker == "binance" {
             let tick: serde_json::Value = super::serde_json::from_str(&rawmsg).unwrap();
             let ts= tick["k"]["t"].to_string();
-            let p= tick["k"]["c"].to_string();
+            let c= tick["k"]["c"].to_string();
             let v=tick["k"]["v"].to_string();
-            Some(StringGenericTick { ts:ts, p:p, v: v }.to_json())
+            let o= tick["k"]["o"].to_string();
+            let h=tick["k"]["h"].to_string();
+            let l=tick["k"]["l"].to_string();
+            client.oldp=c;
+            client.oldv=v;
+            let c= tick["k"]["c"].to_string();
+            let v=tick["k"]["v"].to_string();
+            //let tsi: i64 = tss.timestamp() * 1000;
+            //let ts= tsi.to_string();
+
+            Some(StringGenericOHLC { ts:ts,o:o,l:l,h:h,c:c, v: v }.to_json())
         } else if broker == "hitbtc" {
             let tick: serde_json::Value = super::serde_json::from_str(&rawmsg).unwrap();
             if tick["result"].to_string() == "true" {
@@ -128,18 +173,21 @@ mod Universal {
                 let tss: super::chrono::DateTime<super::chrono::Utc> = tsstr.parse::<super::chrono::DateTime<super::chrono::Utc>>().unwrap();
                 let tsi: i64 = tss.timestamp() * 1000;
                 let ts= tsi.to_string();
-                let p= tick["params"]["last"].to_string();
+                let c= tick["params"]["last"].to_string();
+                let o= tick["params"]["open"].to_string();
+                let h= tick["params"]["max"].to_string();
+                let l= tick["params"]["min"].to_string();
                 let v=tick["params"]["volume"].to_string();
-                if client.oldp != p || client.oldv != v{
-                    let p= tick["params"]["last"].to_string();
+                if client.oldp != c || client.oldv != v{
+                    let c= tick["params"]["last"].to_string();
                     let v=tick["params"]["volume"].to_string();
-                    client.oldp=p;
+                    client.oldp=c;
                     client.oldv=v;
-                    let p= tick["params"]["last"].to_string();
+                    let c= tick["params"]["last"].to_string();
                     let v=tick["params"]["volume"].to_string();
-                    Some(StringGenericTick { ts:ts, p:p, v: v }.to_json())
+                    Some(StringGenericOHLC { ts:ts, o:o,l:l,h:h,c:c, v: v }.to_json())
                 }else{
-                    client.oldp=p;
+                    client.oldp=c;
                     client.oldv=v;
                     None
                 }
@@ -166,6 +214,7 @@ fn send_msg_to_user(client:&Client,senderpair:&Pair,msg2:String,room_id:String){
             }
         } else {
             println!("      [{}] [{}] send but disc", room_id, id);
+
         }
     } else {
         println!("  [{:?}] no status", id);
