@@ -249,7 +249,7 @@ struct Server {
 impl Handler for Client {
     fn on_open(&mut self, _: ws::Handshake) -> Result<()> {
         if self.broker == "hitbtc" {
-            let json = format!("{{ \"method\": \"subscribeCandles\",\"params\": {{\"symbol\": \"{}\"}},\"period\":\"M1\",\"id\": 123 }}", self.pair);
+            let json = format!("{{ \"method\": \"subscribeCandles\",\"params\": {{\"symbol\": \"{}\",\"period\":\"M1\"}},\"id\": 123 }}", self.pair);
             println!("{} {} ", self.broker, json);
             self.out.send(json)
         } else {
