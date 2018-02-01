@@ -112,7 +112,7 @@ impl StringGenericOHLC {
         //let ts = chrono::Utc.timestamp(self.ts.timestamp() / 1000, 0).format("%Y-%m-%d %H:%M:%S");
         let n=self.ts.len()-3;
         let t=self.ts[..n].to_string();
-        let s = format!(r#"{{"ts" :"{}","o"  :{},"h"  :{},"l":{},"c":{},"v":{}}}"#, t,self.o, self.h, self.l, self.c, self.v);
+        let s = format!(r#"{{"ts":"{}","o":{},"h":{},"l":{},"c":{},"v":{}}}"#, t,self.o, self.h, self.l, self.c, self.v);
         s
     }
     fn to_string(&self) -> String {
@@ -164,31 +164,38 @@ mod Universal {
 
             Some(StringGenericOHLC { ts:ts,o:o,l:l,h:h,c:c, v: v }.to_json())
         } else if broker == "hitbtc" {
-            println!("{}",rawmsg);
+
             let tick: serde_json::Value = super::serde_json::from_str(&rawmsg).unwrap();
             if tick["result"].to_string() == "true" {
                 None
-            }else if tick["type"] == "update" {
+            }else if tick["method"] == "snapshotCandles" {
+
                 None
-            } else {
+            } else if tick["method"]=="updateCandles"{
+
                 //convert timestamp to int format
-                let mut tsstr = tick["params"]["timestamp"].to_string();
+                let mut tsstr = tick["params"]["data"][0]["timestamp"].to_string();
+
                 tsstr=tsstr[1..tsstr.len()-1].to_string();
+
+
+
                 let tss: super::chrono::DateTime<super::chrono::Utc> = tsstr.parse::<super::chrono::DateTime<super::chrono::Utc>>().unwrap();
                 let tsi: i64 = tss.timestamp() * 1000;
                 let ts= tsi.to_string();
-                let c= tick["params"]["last"].to_string();
-                let o= tick["params"]["open"].to_string();
-                let h= tick["params"]["high"].to_string();
-                let l= tick["params"]["low"].to_string();
-                let v=tick["params"]["volume"].to_string();
+
+                let c= tick["params"]["data"][0]["close"].to_string();
+                let o= tick["params"]["data"][0]["open"].to_string();
+                let h= tick["params"]["data"][0]["max"].to_string();
+                let l= tick["params"]["data"][0]["min"].to_string();
+                let v=tick["params"]["data"][0]["volume"].to_string();
                 if client.oldp != c || client.oldv != v{
-                    let c= tick["params"]["last"].to_string();
-                    let v=tick["params"]["volume"].to_string();
+                    let c= tick["params"]["data"][0]["close"].to_string();
+                    let v=tick["params"]["data"][0]["volume"].to_string();
                     client.oldp=c;
                     client.oldv=v;
-                    let c= tick["params"]["last"].to_string();
-                    let v=tick["params"]["volume"].to_string();
+                    let c= tick["params"]["data"][0]["close"].to_string();
+                    let v=tick["params"]["data"][0]["volume"].to_string();
                     Some(StringGenericOHLC { ts:ts, o:o,l:l,h:h,c:c, v: v }.to_json())
                 }else{
                     client.oldp=c;
@@ -197,6 +204,8 @@ mod Universal {
                 }
 
 
+            }else{
+                None
             }
         } else {
             None
@@ -240,7 +249,7 @@ struct Server {
 impl Handler for Client {
     fn on_open(&mut self, _: ws::Handshake) -> Result<()> {
         if self.broker == "hitbtc" {
-            let json = format!("{{ \"method\": \"subscribeTicker\",\"params\": {{\"symbol\": \"{}\"}},\"id\": 123 }}", self.pair);
+            let json = format!("{{ \"method\": \"subscribeCandles\",\"params\": {{\"symbol\": \"{}\"}},\"period\":\"M1\",\"id\": 123 }}", self.pair);
             println!("{} {} ", self.broker, json);
             self.out.send(json)
         } else {
