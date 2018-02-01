@@ -7,8 +7,8 @@ use std::thread;
 //use std::env;
 //use std::fs::File;
 
-use std::io::prelude::*;
-use chrono::{DateTime, TimeZone, NaiveDateTime, Utc};
+
+use chrono::TimeZone;
 
 //use chrono::offset::LocalResult;
 use std::collections::HashMap;
@@ -25,7 +25,7 @@ type RoomNB = u32;
 type RoomUsersRegistry = Arc<Mutex<Option<HashMap<RoomNB, Vec<Pair>>>>>;
 type UserStatusRegistry = Arc<Mutex<HashMap<u32, bool>>>;
 
-pub struct  Client {
+pub struct Client {
     out: Sender,
     room_id: Option<String>,
     room_nb: RoomNB,
@@ -33,8 +33,8 @@ pub struct  Client {
     broker: String,
     user_isconnected: UserStatusRegistry,
     room_users: RoomUsersRegistry,
-    oldp:String,
-    oldv:String
+    oldp: String,
+    oldv: String,
 }
 
 struct Pair {
@@ -110,9 +110,9 @@ pub struct StringGenericOHLC {
 impl StringGenericOHLC {
     fn to_json(&self) -> String {
         //let ts = chrono::Utc.timestamp(self.ts.timestamp() / 1000, 0).format("%Y-%m-%d %H:%M:%S");
-        let n=self.ts.len()-3;
-        let t=self.ts[..n].to_string();
-        let s = format!(r#"{{"ts":"{}","o":{},"h":{},"l":{},"c":{},"v":{}}}"#, t,self.o, self.h, self.l, self.c, self.v);
+        let n = self.ts.len() - 3;
+        let t = self.ts[..n].to_string();
+        let s = format!(r#"{{"ts":"{}","o":{},"h":{},"l":{},"c":{},"v":{}}}"#, t, self.o, self.h, self.l, self.c, self.v);
         s
     }
     fn to_string(&self) -> String {
@@ -134,7 +134,6 @@ impl StringGenericOHLC {
 }
 
 
-
 mod Universal {
     use StringGenericOHLC;
     use serde_json;
@@ -144,67 +143,61 @@ mod Universal {
         String(String),
     }
 
-    pub fn get_universal_msg(client:&mut super::Client, rawmsg: &String) -> Option<String> {
-        let broker=&client.broker;
+    pub fn get_universal_msg(client: &mut super::Client, rawmsg: &String) -> Option<String> {
+        let broker = &client.broker;
         if broker == "binance" {
-
             let tick: serde_json::Value = super::serde_json::from_str(&rawmsg).unwrap();
-            let ts= tick["k"]["t"].to_string();
-            let c= tick["k"]["c"].to_string();
-            let v=tick["k"]["v"].to_string();
-            let o= tick["k"]["o"].to_string();
-            let h=tick["k"]["h"].to_string();
-            let l=tick["k"]["l"].to_string();
-            client.oldp=c;
-            client.oldv=v;
-            let c= tick["k"]["c"].to_string();
-            let v=tick["k"]["v"].to_string();
+            let ts = tick["k"]["t"].to_string();
+            let c = tick["k"]["c"].to_string();
+            let v = tick["k"]["v"].to_string();
+            let o = tick["k"]["o"].to_string();
+            let h = tick["k"]["h"].to_string();
+            let l = tick["k"]["l"].to_string();
+            client.oldp = c;
+            client.oldv = v;
+            let c = tick["k"]["c"].to_string();
+            let v = tick["k"]["v"].to_string();
             //let tsi: i64 = tss.timestamp() * 1000;
             //let ts= tsi.to_string();
 
-            Some(StringGenericOHLC { ts:ts,o:o,l:l,h:h,c:c, v: v }.to_json())
+            Some(StringGenericOHLC { ts: ts, o: o, l: l, h: h, c: c, v: v }.to_json())
         } else if broker == "hitbtc" {
-
             let tick: serde_json::Value = super::serde_json::from_str(&rawmsg).unwrap();
             if tick["result"].to_string() == "true" {
                 None
-            }else if tick["method"] == "snapshotCandles" {
-
+            } else if tick["method"] == "snapshotCandles" {
                 None
-            } else if tick["method"]=="updateCandles"{
+            } else if tick["method"] == "updateCandles" {
 
                 //convert timestamp to int format
                 let mut tsstr = tick["params"]["data"][0]["timestamp"].to_string();
 
-                tsstr=tsstr[1..tsstr.len()-1].to_string();
-
+                tsstr = tsstr[1..tsstr.len() - 1].to_string();
 
 
                 let tss: super::chrono::DateTime<super::chrono::Utc> = tsstr.parse::<super::chrono::DateTime<super::chrono::Utc>>().unwrap();
                 let tsi: i64 = tss.timestamp() * 1000;
-                let ts= tsi.to_string();
+                let ts = tsi.to_string();
 
-                let c= tick["params"]["data"][0]["close"].to_string();
-                let o= tick["params"]["data"][0]["open"].to_string();
-                let h= tick["params"]["data"][0]["max"].to_string();
-                let l= tick["params"]["data"][0]["min"].to_string();
-                let v=tick["params"]["data"][0]["volume"].to_string();
-                if client.oldp != c || client.oldv != v{
-                    let c= tick["params"]["data"][0]["close"].to_string();
-                    let v=tick["params"]["data"][0]["volume"].to_string();
-                    client.oldp=c;
-                    client.oldv=v;
-                    let c= tick["params"]["data"][0]["close"].to_string();
-                    let v=tick["params"]["data"][0]["volume"].to_string();
-                    Some(StringGenericOHLC { ts:ts, o:o,l:l,h:h,c:c, v: v }.to_json())
-                }else{
-                    client.oldp=c;
-                    client.oldv=v;
+                let c = tick["params"]["data"][0]["close"].to_string();
+                let o = tick["params"]["data"][0]["open"].to_string();
+                let h = tick["params"]["data"][0]["max"].to_string();
+                let l = tick["params"]["data"][0]["min"].to_string();
+                let v = tick["params"]["data"][0]["volume"].to_string();
+                if client.oldp != c || client.oldv != v {
+                    let c = tick["params"]["data"][0]["close"].to_string();
+                    let v = tick["params"]["data"][0]["volume"].to_string();
+                    client.oldp = c;
+                    client.oldv = v;
+                    let c = tick["params"]["data"][0]["close"].to_string();
+                    let v = tick["params"]["data"][0]["volume"].to_string();
+                    Some(StringGenericOHLC { ts: ts, o: o, l: l, h: h, c: c, v: v }.to_json())
+                } else {
+                    client.oldp = c;
+                    client.oldv = v;
                     None
                 }
-
-
-            }else{
+            } else {
                 None
             }
         } else {
@@ -212,7 +205,8 @@ mod Universal {
         }
     }
 }
-fn send_msg_to_user(client:&Client,senderpair:&Pair,msg2:String,room_id:String){
+//return true if user is still connected, false otherwise
+fn send_msg_to_user(client: &Client, senderpair: &Pair, msg2: String, room_id: String) -> bool {
     let id = senderpair.id;
     let out = &senderpair.out;
     //println!("  send to {:?}", id);
@@ -225,14 +219,18 @@ fn send_msg_to_user(client:&Client,senderpair:&Pair,msg2:String,room_id:String){
             } else {
                 println!("      [{}] senc nok", id);
             }
+            true
         } else {
-            //println!("      [{}] [{}] send but disc", room_id, id);
+            //println!("      [{}] [{}] user disc", room_id, id);
+                       false
 
         }
     } else {
         println!("  [{:?}] no status", id);
+        true
     }
 }
+
 struct Server {
     out: Sender,
     count: Rc<Cell<u32>>,
@@ -261,27 +259,26 @@ impl Handler for Client {
         let message: Option<String> = Universal::get_universal_msg(self, &m);
         match message {
             Some(message_) => {
-                let mm=message_.clone();
+                let mm = message_.clone();
                 let room_id = self.room_id.clone().unwrap();
+                let mut clearIds: Vec<usize> = Vec::new();
                 if let Ok(mut opt) = self.room_users.lock() {
                     if let Some(ref mut hm) = *opt { //open option
-                        let room_users = hm.get(&self.room_nb);
-                        if let Some(list) = room_users {
-                            for senderpair in list.iter() {
-                                send_msg_to_user(self,senderpair,mm.clone(),room_id.clone())
-                            }
+                        let mut room_users = hm.get_mut(&self.room_nb);
+                        if let Some(mut list) = room_users {
+                            //run send msg and keep only items where send_msg=true (i.e. user still connected)
+                            list.retain(|&ref x|  send_msg_to_user(self, x, mm.clone(), room_id.clone()));
                         }
                     } else {}
                     Ok(())
                 } else {
                     Ok(())
                 }
-            },
+            }
             None => {
                 Ok(())
             }
         }
-
     }
 }
 
@@ -316,14 +313,14 @@ impl Server {
         a.insert(room_id, room_nb);
     }
     fn update_user_room(&mut self, room_id: String) {
-        //update user room
+//update user room
         println!("  * Update user room");
         let mut aa = self.user_room.borrow_mut();
         if let None = aa.get(&self.id) {} else {}
         aa.insert(self.id, room_id);
     }
     fn update_user_isconnected(&mut self) {
-        //update user room
+//update user room
         println!("  * Update user isconnected SET {} TRUE", self.id);
         let mut aa = self.user_isconnected.lock().unwrap();
         aa.insert(self.id, true);
@@ -396,7 +393,7 @@ impl Handler for Server {
     fn on_open(&mut self, hs: ws::Handshake) -> Result<()> {
         let path = hs.request.resource();
         let pathsplit: Vec<&str> = path.split("/").collect();
-        if (pathsplit.len() < 3) {
+        if pathsplit.len() < 3 {
             println!("Not enough arguments");
             self.out.close(CloseCode::Normal)
         } else {
@@ -420,10 +417,10 @@ impl Handler for Server {
             println!("room {}", room_id);
             let room_nb: RoomNB = self.set_room_nb(broker.to_owned(), pair.to_owned(), interval.to_owned(), room_id);
 
-            //let id = self.id;
+//let id = self.id;
             let is_room_creation = self.update_room_users(room_nb);
             println!("  roomcreation? {}", is_room_creation);
-            //let user_id = self.count.get();
+//let user_id = self.count.get();
             let id = Some(get_ws_id(broker, pair, interval).to_owned());
             let w = self.user_isconnected.clone();
             let ww = self.room_users.clone();
@@ -438,14 +435,14 @@ impl Handler for Server {
                         broker: b.clone(),
                         pair: p.clone(),
                         room_id: id.clone(),
-                        oldp:"".to_string(),
-                        oldv:"".to_string(),
+                        oldp: "".to_string(),
+                        oldv: "".to_string(),
                         room_users: ww.clone(),
                         room_nb: room_nb.clone(),
                         user_isconnected: w.clone(),
                     }).unwrap();
                     println!("  New thread done ");
-                    //                              */
+//                              */
                 }));
             }
 
@@ -466,7 +463,7 @@ impl Handler for Server {
                 println!("The client is leaving the site. Update room count");
                 self.update_user_setnotconnected();
                 self.out.close(CloseCode::Normal).unwrap();
-                //self.decrement_room_count();
+//self.decrement_room_count();
             }
             CloseCode::Abnormal => println!("Closing handshake failed! Unable to obtain closing status from client."),
             CloseCode::Protocol => println!("protocol"),
@@ -498,7 +495,7 @@ fn main() {
     println!("Coinamics Server Websockets");
     static WS_PORT: i32 = 3014;
 
-    //CREATE SHARED VARIABLES
+//CREATE SHARED VARIABLES
     let count = Rc::new(Cell::new(0));
     let c: u32 = 0;
     let room_count = Rc::new(Cell::new(c));
@@ -521,7 +518,7 @@ fn main() {
     println!("Try listen {}", WS_PORT);
     if let Err(error) = listen("0.0.0.0:3014", |out| Server {
         out: out,
-        //id: id_counter + 1,
+//id: id_counter + 1,
         id: count.get(),
         child: None,
         count: count.clone(),
