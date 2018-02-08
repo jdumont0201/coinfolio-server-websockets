@@ -536,6 +536,8 @@ fn main() {
     let certpath = &args[1].to_string();
     let keypath = &args[2].to_string();
 
+    println!("CRT: {}",certpath);
+    println!("KEY: {}",keypath);
     //READ FIRST FILE
     let read = read_file(certpath);
     match read {
