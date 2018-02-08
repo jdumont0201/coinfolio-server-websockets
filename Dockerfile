@@ -10,4 +10,4 @@ RUN mkdir /coinfolio && mkdir /coinfolio/${appname}
 ADD target/release/server-websockets /coinfolio/${appname}
 ADD certs /coinfolio/${appname}
 RUN chmod 777 /coinfolio/${appname}/server-websockets
-CMD exec /coinfolio/${appname}/server-websockets
+CMD exec /coinfolio/${appname}/server-websockets /coinfolio/${appname}/certs/coinamics.crt  /coinfolio/${appname}/certs/coinamics.key

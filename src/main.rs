@@ -14,7 +14,7 @@ use std::cell::Cell;
 use std::cell::RefCell;
 use std::vec::Vec;
 
-
+use std::env;
 extern crate openssl;
 
 
@@ -524,13 +524,21 @@ fn main() {
     let ae: HashMap<RoomNB, Vec<Pair>> = HashMap::new();  // room id -> vec of {user id and sender out}
     let room_users: RoomUsersRegistry = Arc::new(Mutex::new(Some(ae)));
 
+    let args: Vec<String> = env::args().collect();
+    if args.len() <3{
+        println!("not enough arguments");
+        return
+    }
+
+    let certpath=&args[1].to_string();
+    let keypath=&args[2].to_string();
     let cert = {
-        let data = read_file("./certs/coinamics.crt").unwrap();
+        let data = read_file(certpath).unwrap();
         X509::from_pem(data.as_ref()).unwrap()
     };
 
     let pkey = {
-        let data = read_file("./certs/coinamics.key").unwrap();
+        let data = read_file(keypath).unwrap();
         PKey::private_key_from_pem(data.as_ref()).unwrap()
     };
 
