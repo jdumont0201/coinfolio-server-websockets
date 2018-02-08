@@ -14,7 +14,5 @@ RUN chmod 777 /coinfolio/${appname}/server-websockets
 RUN chmod 777 /coinfolio/${appname}/coinamics.crt
 RUN chmod 777 /coinfolio/${appname}/coinamics.key
 
-RUN ls
-RUN ls /coinfolio/${appname}/
 
 CMD exec /coinfolio/${appname}/server-websockets /coinfolio/${appname}/coinamics.crt  /coinfolio/${appname}/coinamics.key
