@@ -4,22 +4,31 @@ extern crate ws;
 extern crate serde_json;
 
 use std::thread;
-//use std::env;
-//use std::fs::File;
-
-
 use chrono::TimeZone;
-
-//use chrono::offset::LocalResult;
 use std::collections::HashMap;
 use ws::{listen, connect, Handler, Sender, Result, Message, CloseCode};
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::Mutex;
-//use std::sync::MutexGuard;
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::vec::Vec;
+
+
+extern crate openssl;
+
+
+
+use std::io::Read;
+
+use std::fs::File;
+
+use openssl::ssl::{SslAcceptor, SslAcceptorBuilder, SslMethod, SslStream};
+use openssl::pkey::PKey;
+use openssl::x509::{X509, X509Ref};
+
+
+
 
 type RoomNB = u32;
 type RoomUsersRegistry = Arc<Mutex<Option<HashMap<RoomNB, Vec<Pair>>>>>;
@@ -237,7 +246,7 @@ struct Server {
     room_count: Rc<Cell<u32>>,
     room_counter: Rc<RefCell<HashMap<String, u8>>>,
     room_nbs: Rc<RefCell<HashMap<String, u32>>>,
-    user_room: Rc<RefCell<HashMap<u32, String>>>,
+    //user_room: Rc<RefCell<HashMap<u32, String>>>,
     user_isconnected: UserStatusRegistry,
     room_users: RoomUsersRegistry,
     id: u32,
@@ -312,20 +321,20 @@ impl Server {
         let mut a = self.room_nbs.borrow_mut();
         a.insert(room_id, room_nb);
     }
-    fn update_user_room(&mut self, room_id: String) {
+    /*fn update_user_room(&mut self, room_id: String) {
 //update user room
         println!("  * Update user room");
         let mut aa = self.user_room.borrow_mut();
         if let None = aa.get(&self.id) {} else {}
         aa.insert(self.id, room_id);
-    }
+    }*/
     fn update_user_isconnected(&mut self) {
 //update user room
         println!("  * Update user isconnected SET {} TRUE", self.id);
         let mut aa = self.user_isconnected.lock().unwrap();
         aa.insert(self.id, true);
     }
-    fn decrement_room_count(&mut self) {
+    /*fn decrement_room_count(&mut self) {
         println!("  * decrement room_count");
         let a = self.user_room.borrow_mut();
         if let Some(room) = a.get(&self.id) {
@@ -340,7 +349,7 @@ impl Server {
                 B.insert(room.to_string(), co - 1);
             }
         }
-    }
+    }*/
     fn update_user_setnotconnected(&mut self) {
         println!("  * Update user isconnected");
         let mut aa = self.user_isconnected.lock().unwrap();
@@ -409,7 +418,7 @@ impl Handler for Server {
             self.update_room_count(room_id);
 
             let room_id = get_ws_id(broker, pair, interval).to_owned();
-            self.update_user_room(room_id);
+            //self.update_user_room(room_id);
 
             self.update_user_isconnected();
 
@@ -495,7 +504,7 @@ fn main() {
     println!("Coinamics Server Websockets");
     static WS_PORT: i32 = 3014;
 
-//CREATE SHARED VARIABLES
+    //CREATE SHARED VARIABLES
     let count = Rc::new(Cell::new(0));
     let c: u32 = 0;
     let room_count = Rc::new(Cell::new(c));
@@ -506,8 +515,8 @@ fn main() {
     let ab: HashMap<String, RoomNB> = HashMap::new();// room id -> room nb
     let room_nbs = Rc::new(RefCell::new(ab));
 
-    let ac: HashMap<u32, String> = HashMap::new(); // user id -> room_id of his room
-    let user_room = Rc::new(RefCell::new(ac));
+    //let ac: HashMap<u32, String> = HashMap::new(); // user id -> room_id of his room
+    //let user_room = Rc::new(RefCell::new(ac));
 
     let ad: HashMap<u32, bool> = HashMap::new();   // room id -> status connected true or false
     let detailed_dispatch: UserStatusRegistry = Arc::new(Mutex::new(ad));
@@ -515,17 +524,28 @@ fn main() {
     let ae: HashMap<RoomNB, Vec<Pair>> = HashMap::new();  // room id -> vec of {user id and sender out}
     let room_users: RoomUsersRegistry = Arc::new(Mutex::new(Some(ae)));
 
+    let cert = {
+        let data = read_file("./certs/coinamics.crt").unwrap();
+        X509::from_pem(data.as_ref()).unwrap()
+    };
+
+    let pkey = {
+        let data = read_file("./certs/coinamics.key").unwrap();
+        PKey::private_key_from_pem(data.as_ref()).unwrap()
+    };
+
+
+
     println!("Try listen {}", WS_PORT);
-    if let Err(error) = listen("0.0.0.0:3014", |out| Server {
+    if let Err(error) = listen(format!("0.0.0.0:{}",WS_PORT), |out| Server {
         out: out,
-//id: id_counter + 1,
         id: count.get(),
         child: None,
         count: count.clone(),
         room_count: room_count.clone(),
         room_counter: room_counter.clone(),
         room_nbs: room_nbs.clone(),
-        user_room: user_room.clone(),
+        //user_room: user_room.clone(),
         user_isconnected: detailed_dispatch.clone(),
         room_users: room_users.clone(),
     }) {
@@ -533,6 +553,12 @@ fn main() {
     }
 }
 
+fn read_file(name: &str) -> std::io::Result<Vec<u8>> {
+    let mut file = try!(File::open(name));
+    let mut buf = Vec::new();
+    try!(file.read_to_end(&mut buf));
+    Ok(buf)
+}
 
 fn get_ws_url(broker: &str, pair: &str, interval: &str) -> String {
     if broker == "binance" {

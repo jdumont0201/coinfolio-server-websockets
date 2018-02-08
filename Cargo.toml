@@ -9,6 +9,7 @@ serde_derive = "*"
 serde = "*"
 json = "*"
 chrono = "0.4"
+openssl="*"
 ws = { version = "*", git = "https://github.com/housleyjk/ws-rs", features =["ssl"]}
 time="*"
 

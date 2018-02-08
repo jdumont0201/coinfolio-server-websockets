@@ -8,5 +8,6 @@ ENV appname server-websockets
 
 RUN mkdir /coinfolio && mkdir /coinfolio/${appname}
 ADD target/release/server-websockets /coinfolio/${appname}
+ADD certs /coinfolio/${appname}
 RUN chmod 777 /coinfolio/${appname}/server-websockets
 CMD exec /coinfolio/${appname}/server-websockets
