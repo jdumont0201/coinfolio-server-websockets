@@ -15,10 +15,11 @@ use std::cell::RefCell;
 use std::vec::Vec;
 
 use std::env;
+
 extern crate openssl;
 
 
-
+use ws::util::TcpStream;
 use std::io::Read;
 
 use std::fs::File;
@@ -26,8 +27,6 @@ use std::fs::File;
 use openssl::ssl::{SslAcceptor, SslAcceptorBuilder, SslMethod, SslStream};
 use openssl::pkey::PKey;
 use openssl::x509::{X509, X509Ref};
-
-
 
 
 type RoomNB = u32;
@@ -214,6 +213,7 @@ mod Universal {
         }
     }
 }
+
 //return true if user is still connected, false otherwise
 fn send_msg_to_user(client: &Client, senderpair: &Pair, msg2: String, room_id: String) -> bool {
     let id = senderpair.id;
@@ -231,8 +231,7 @@ fn send_msg_to_user(client: &Client, senderpair: &Pair, msg2: String, room_id: S
             true
         } else {
             //println!("      [{}] [{}] user disc", room_id, id);
-                       false
-
+            false
         }
     } else {
         println!("  [{:?}] no status", id);
@@ -251,6 +250,7 @@ struct Server {
     room_users: RoomUsersRegistry,
     id: u32,
     child: Option<std::thread::JoinHandle<()>>,
+    ssl: Rc<SslAcceptor>,
 }
 
 impl Handler for Client {
@@ -276,7 +276,7 @@ impl Handler for Client {
                         let mut room_users = hm.get_mut(&self.room_nb);
                         if let Some(mut list) = room_users {
                             //run send msg and keep only items where send_msg=true (i.e. user still connected)
-                            list.retain(|&ref x|  send_msg_to_user(self, x, mm.clone(), room_id.clone()));
+                            list.retain(|&ref x| send_msg_to_user(self, x, mm.clone(), room_id.clone()));
                         }
                     } else {}
                     Ok(())
@@ -399,6 +399,9 @@ impl Server {
 }
 
 impl Handler for Server {
+    fn upgrade_ssl_server(&mut self, sock: TcpStream) -> ws::Result<SslStream<TcpStream>> {
+        self.ssl.accept(sock).map_err(From::from)
+    }
     fn on_open(&mut self, hs: ws::Handshake) -> Result<()> {
         let path = hs.request.resource();
         let pathsplit: Vec<&str> = path.split("/").collect();
@@ -525,40 +528,103 @@ fn main() {
     let room_users: RoomUsersRegistry = Arc::new(Mutex::new(Some(ae)));
 
     let args: Vec<String> = env::args().collect();
-    if args.len() <3{
+    if args.len() < 3 {
         println!("not enough arguments");
-        return
+        return;
     }
 
-    let certpath=&args[1].to_string();
-    let keypath=&args[2].to_string();
-    let cert = {
-        let data = read_file(certpath).unwrap();
-        X509::from_pem(data.as_ref()).unwrap()
-    };
+    let certpath = &args[1].to_string();
+    let keypath = &args[2].to_string();
 
-    let pkey = {
-        let data = read_file(keypath).unwrap();
-        PKey::private_key_from_pem(data.as_ref()).unwrap()
-    };
+    //READ FIRST FILE
+    let read = read_file(certpath);
+    match read {
+        Ok(read_) => {
+            //EXTRACT FIRST FILE
+            let crt = X509::from_pem(read_.as_ref());
+            match (crt) {
+                Ok(crt_) => {
+                    println!("read crt ok");
 
+                    //READ 2ND FILE
+                    let read2 = read_file(keypath);
+                    match read2 {
+                        Ok(read2_) => {
+                            //EXTRACT 2ND FILE
+                            let key = PKey::private_key_from_pem(read2_.as_ref());
+                            match (key) {
+                                Ok(key_) => {
+                                    println!("read key ok");
+
+
+                                    let acceptor = Rc::new(SslAcceptorBuilder::mozilla_intermediate(
+                                        SslMethod::tls(),
+                                        &key_,
+                                        &crt_,
+                                        std::iter::empty::<X509Ref>(),
+                                    ).unwrap().build());
+
+                                    println!("acceptor ok");
+                                    let serv = ws::Builder::new().with_settings(ws::Settings {
+                                        encrypt_server: true,
+                                        ..ws::Settings::default()
+                                    }).build(|out: ws::Sender| {
+                                        Server {
+                                            ssl:acceptor.clone(),
+                                            out: out,
+                                            id: count.get(),
+                                            child: None,
+                                            count: count.clone(),
+                                            room_count: room_count.clone(),
+                                            room_counter: room_counter.clone(),
+                                            room_nbs: room_nbs.clone(),
+                                            //user_room: user_room.clone(),
+                                            user_isconnected: detailed_dispatch.clone(),
+                                            room_users: room_users.clone(),
+                                        }
+                                    });
+                                    println!("build ok");
+                                    match serv {
+                                        Ok(serv_) => {
+                                            println!("serv ok");
+                                            let lis = serv_.listen(format!("0.0.0.0:{}", WS_PORT));
+                                            match lis {
+                                                Ok(lis_) => {
+                                                    println!("listen ok")
+                                                }
+                                                Err(err) => {
+                                                    println!("err listen {:?}", err)
+                                                }
+                                            }
+                                        }
+                                        Err(err) => {
+                                            println!("cannot build serv {:?}", err)
+                                        }
+                                    }
+                                },
+                                Err(err) => {
+                                    println!("cannot extract key")
+                                }
+                            }
+                        },
+                        Err(err) => {
+                            println!("cannot read key")
+                        }
+                    }
+                }
+                Err(err) => {
+                    println!("cannot extract crt")
+                }
+            }
+        },
+
+        Err(err) => {
+            println!("cannot read crt")
+        }
+    }
 
 
     println!("Try listen {}", WS_PORT);
-    if let Err(error) = listen(format!("0.0.0.0:{}",WS_PORT), |out| Server {
-        out: out,
-        id: count.get(),
-        child: None,
-        count: count.clone(),
-        room_count: room_count.clone(),
-        room_counter: room_counter.clone(),
-        room_nbs: room_nbs.clone(),
-        //user_room: user_room.clone(),
-        user_isconnected: detailed_dispatch.clone(),
-        room_users: room_users.clone(),
-    }) {
-        println!("Failed to create WebSocket due to {:?}", error);
-    }
 }
 
 fn read_file(name: &str) -> std::io::Result<Vec<u8>> {
