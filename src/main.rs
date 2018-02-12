@@ -4,6 +4,10 @@ extern crate ws;
 extern crate serde_json;
 extern crate openssl;
 
+mod Universal;
+mod Server;
+mod Client;
+
 use std::thread;
 use chrono::TimeZone;
 use std::collections::HashMap;
@@ -14,9 +18,6 @@ use std::sync::Mutex;
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::vec::Vec;
-mod Universal;
-mod Server;
-mod Client;
 use std::env;
 use ws::util::TcpStream;
 use std::io::Read;
@@ -24,7 +25,6 @@ use std::fs::File;
 use openssl::ssl::{SslAcceptor, SslAcceptorBuilder, SslMethod, SslStream};
 use openssl::pkey::PKey;
 use openssl::x509::{X509, X509Ref};
-
 
 type RoomNB = u32;
 type RoomUsersRegistry = Arc<Mutex<Option<HashMap<RoomNB, Vec<Pair>>>>>;
@@ -34,7 +34,6 @@ pub struct Pair {
     pub id: u32,
     pub out: Sender,
 }
-
 impl Clone for Pair {
     fn clone(&self) -> Self {
         Pair {
@@ -44,37 +43,15 @@ impl Clone for Pair {
     }
 }
 
-//return true if user is still connected, false otherwise
-fn send_msg_to_user(client: &Client::Client, senderpair: &Pair, msg2: String, room_id: String) -> bool {
-    let id = senderpair.id;
-    let out = &senderpair.out;
-    //println!("  send to {:?}", id);
-    let hm = client.user_isconnected.lock().unwrap();
-    if let Some(sta) = hm.get(&id) {
-        //  println!("    check status id={:?} {}",id, sta);
-        if *sta {
-            if let Ok(_rr) = out.send(msg2) {
-                println!("      [{}] [{}] send ok", room_id, id);
-            } else {
-                println!("      [{}] senc nok", id);
-            }
-            true
-        } else {
-            //println!("      [{}] [{}] user disc", room_id, id);
-            false
-        }
-    } else {
-        println!("  [{:?}] no status", id);
-        true
-    }
-}
 
 
 fn main() {
     println!("Coinamics Server Websockets");
     static WS_PORT: i32 = 3014;
 
-    //CREATE SHARED VARIABLES
+    //
+    // CREATE SHARED VARIABLES
+    //
     let count = Rc::new(Cell::new(0));
     let c: u32 = 0;
     let room_count = Rc::new(Cell::new(c));
@@ -94,17 +71,17 @@ fn main() {
     let ae: HashMap<RoomNB, Vec<Pair>> = HashMap::new();  // room id -> vec of {user id and sender out}
     let room_users: RoomUsersRegistry = Arc::new(Mutex::new(Some(ae)));
 
+    //LOAD SLL CERT & KEY AND LAUNCH
     let args: Vec<String> = env::args().collect();
     if args.len() < 3 {
         println!("not enough arguments");
         return;
     }
-
     let certpath = &args[1].to_string();
     let keypath = &args[2].to_string();
 
-    println!("CRT: {}",certpath);
-    println!("KEY: {}",keypath);
+    println!("CRT: {}", certpath);
+    println!("KEY: {}", keypath);
     //READ FIRST FILE
     let read = read_file(certpath);
     match read {
@@ -114,7 +91,6 @@ fn main() {
             match (crt) {
                 Ok(crt_) => {
                     println!("read crt ok");
-
                     //READ 2ND FILE
                     let read2 = read_file(keypath);
                     match read2 {
@@ -124,22 +100,11 @@ fn main() {
                             match (key) {
                                 Ok(key_) => {
                                     println!("read key ok");
-
-
-                                    let acceptor = Rc::new(SslAcceptorBuilder::mozilla_intermediate(
-                                        SslMethod::tls(),
-                                        &key_,
-                                        &crt_,
-                                        std::iter::empty::<X509Ref>(),
-                                    ).unwrap().build());
-
+                                    let acceptor = Rc::new(SslAcceptorBuilder::mozilla_intermediate(SslMethod::tls(), &key_, &crt_, std::iter::empty::<X509Ref>()).unwrap().build());
                                     println!("acceptor ok");
-                                    let serv = ws::Builder::new().with_settings(ws::Settings {
-                                        encrypt_server: true,
-                                        ..ws::Settings::default()
-                                    }).build(|out: ws::Sender| {
+                                    let serv = ws::Builder::new().with_settings(ws::Settings { encrypt_server: true, ..ws::Settings::default() }).build(|out: ws::Sender| {
                                         Server::Server {
-                                            ssl:acceptor.clone(),
+                                            ssl: acceptor.clone(),
                                             out: out,
                                             id: count.get(),
                                             child: None,
@@ -161,38 +126,23 @@ fn main() {
                                                 Ok(lis_) => {
                                                     println!("listen ok")
                                                 }
-                                                Err(err) => {
-                                                    println!("err listen {:?}", err)
-                                                }
+                                                Err(err) => { println!("err listen {:?}", err) }
                                             }
                                         }
-                                        Err(err) => {
-                                            println!("cannot build serv {:?}", err)
-                                        }
+                                        Err(err) => { println!("cannot build serv {:?}", err) }
                                     }
-                                },
-                                Err(err) => {
-                                    println!("cannot extract key")
                                 }
+                                Err(err) => { println!("cannot extract key") }
                             }
-                        },
-                        Err(err) => {
-                            println!("cannot read key")
                         }
+                        Err(err) => { println!("cannot read key") }
                     }
                 }
-                Err(err) => {
-                    println!("cannot extract crt")
-                }
+                Err(err) => { println!("cannot extract crt") }
             }
-        },
-
-        Err(err) => {
-            println!("cannot read crt")
         }
+        Err(err) => { println!("cannot read crt") }
     }
-
-
     println!("Try listen {}", WS_PORT);
 }
 

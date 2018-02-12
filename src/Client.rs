@@ -3,9 +3,11 @@ use ws;
 use RoomNB;
 use UserStatusRegistry;
 use RoomUsersRegistry;
-use send_msg_to_user;
+
 use ws::{listen, connect, Handler, Sender, Result, Message, CloseCode};
 use Universal;
+use Pair;
+
 pub struct Client {
     pub out: Sender,
     pub room_id: Option<String>,
@@ -54,5 +56,31 @@ impl Handler for Client {
                 Ok(())
             }
         }
+    }
+}
+
+
+//return true if user is still connected, false otherwise
+fn send_msg_to_user(client: &Client, senderpair: &Pair, msg2: String, room_id: String) -> bool {
+    let id = senderpair.id;
+    let out = &senderpair.out;
+    //println!("  send to {:?}", id);
+    let hm = client.user_isconnected.lock().unwrap();
+    if let Some(sta) = hm.get(&id) {
+        //  println!("    check status id={:?} {}",id, sta);
+        if *sta {
+            if let Ok(_rr) = out.send(msg2) {
+                println!("      [{}] [{}] send ok", room_id, id);
+            } else {
+                println!("      [{}] senc nok", id);
+            }
+            true
+        } else {
+            //println!("      [{}] [{}] user disc", room_id, id);
+            false
+        }
+    } else {
+        println!("  [{:?}] no status", id);
+        true
     }
 }

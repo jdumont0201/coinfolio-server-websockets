@@ -1,4 +1,3 @@
-
 use std;
 use ws;
 use openssl::ssl::{SslAcceptor, SslAcceptorBuilder, SslMethod, SslStream};
@@ -22,13 +21,13 @@ use std::cell::Cell;
 use std::cell::RefCell;
 use std::vec::Vec;
 use Client::Client;
+
 pub struct Server {
     pub out: Sender,
     pub count: Rc<Cell<u32>>,
     pub room_count: Rc<Cell<u32>>,
     pub room_counter: Rc<RefCell<HashMap<String, u8>>>,
     pub room_nbs: Rc<RefCell<HashMap<String, u32>>>,
-    //user_room: Rc<RefCell<HashMap<u32, String>>>,
     pub user_isconnected: UserStatusRegistry,
     pub room_users: RoomUsersRegistry,
     pub id: u32,
@@ -55,22 +54,18 @@ impl Handler for Server {
             println!("  USER ID {}", self.id);
             let url = get_ws_url(broker, pair, interval);
 
+            //update shared structures
             let room_id = get_ws_id(broker, pair, interval).to_owned();
             self.update_room_count(room_id);
-
             let room_id = get_ws_id(broker, pair, interval).to_owned();
-            //self.update_user_room(room_id);
-
             self.update_user_isconnected();
-
             let room_id = get_ws_id(broker, pair, interval).to_owned();
             println!("room {}", room_id);
             let room_nb: RoomNB = self.set_room_nb(broker.to_owned(), pair.to_owned(), interval.to_owned(), room_id);
 
-//let id = self.id;
+
             let is_room_creation = self.update_room_users(room_nb);
             println!("  roomcreation? {}", is_room_creation);
-//let user_id = self.count.get();
             let id = Some(get_ws_id(broker, pair, interval).to_owned());
             let w = self.user_isconnected.clone();
             let ww = self.room_users.clone();
@@ -92,10 +87,9 @@ impl Handler for Server {
                         user_isconnected: w.clone(),
                     }).unwrap();
                     println!("  New thread done ");
-//                              */
+
                 }));
             }
-
             self.count.set(self.count.get() + 1);
             self.out.send("{\"wsConnected\":\"true\"}")
         }
@@ -113,7 +107,6 @@ impl Handler for Server {
                 println!("The client is leaving the site. Update room count");
                 self.update_user_setnotconnected();
                 self.out.close(CloseCode::Normal).unwrap();
-//self.decrement_room_count();
             }
             CloseCode::Abnormal => println!("Closing handshake failed! Unable to obtain closing status from client."),
             CloseCode::Protocol => println!("protocol"),
@@ -171,35 +164,12 @@ impl Server {
         let mut a = self.room_nbs.borrow_mut();
         a.insert(room_id, room_nb);
     }
-    /*fn update_user_room(&mut self, room_id: String) {
-//update user room
-        println!("  * Update user room");
-        let mut aa = self.user_room.borrow_mut();
-        if let None = aa.get(&self.id) {} else {}
-        aa.insert(self.id, room_id);
-    }*/
     fn update_user_isconnected(&mut self) {
-//update user room
+        //update user room
         println!("  * Update user isconnected SET {} TRUE", self.id);
         let mut aa = self.user_isconnected.lock().unwrap();
         aa.insert(self.id, true);
     }
-    /*fn decrement_room_count(&mut self) {
-        println!("  * decrement room_count");
-        let a = self.user_room.borrow_mut();
-        if let Some(room) = a.get(&self.id) {
-            let mut B = self.room_counter.borrow_mut();
-            let mut has_count = false;
-            let mut co = 0;
-            if let Some(count) = B.get(room) {
-                has_count = true;
-                co = *count;
-            }
-            if has_count {
-                B.insert(room.to_string(), co - 1);
-            }
-        }
-    }*/
     fn update_user_setnotconnected(&mut self) {
         println!("  * Update user isconnected");
         let mut aa = self.user_isconnected.lock().unwrap();
