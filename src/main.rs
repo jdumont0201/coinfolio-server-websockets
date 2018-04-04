@@ -1,47 +1,39 @@
 extern crate time;
 extern crate chrono;
-
-use time::precise_time_ns;
-use std::thread;
-use std::env;
-use std::fs::File;
-use std::io::prelude::*;
-use chrono::prelude::*;
-use chrono::offset::LocalResult;
-use std::collections::HashMap;
-
 extern crate ws;
+extern crate serde_json;
+extern crate openssl;
 
+mod Universal;
+mod Server;
+mod Client;
+
+use std::thread;
+use chrono::TimeZone;
+use std::collections::HashMap;
 use ws::{listen, connect, Handler, Sender, Result, Message, CloseCode};
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::sync::MutexGuard;
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::vec::Vec;
+use std::env;
+use ws::util::TcpStream;
+use std::io::Read;
+use std::fs::File;
+use openssl::ssl::{SslAcceptor, SslAcceptorBuilder, SslMethod, SslStream};
+use openssl::pkey::PKey;
+use openssl::x509::{X509, X509Ref};
 
-type RoomNB=u32;
+type RoomNB = u32;
 type RoomUsersRegistry = Arc<Mutex<Option<HashMap<RoomNB, Vec<Pair>>>>>;
 type UserStatusRegistry = Arc<Mutex<HashMap<u32, bool>>>;
 
-
-struct Client {
-    out: Sender,
-    room_id: Option<String>,
-    room_nb: RoomNB,
-    user_status: UserStatusRegistry,
-
-    room_users: RoomUsersRegistry,
+pub struct Pair {
+    pub id: u32,
+    pub out: Sender,
 }
-
-
-struct Pair {
-    id: u32
-    ,
-    out: Sender,
-}
-
 impl Clone for Pair {
     fn clone(&self) -> Self {
         Pair {
@@ -51,319 +43,114 @@ impl Clone for Pair {
     }
 }
 
-struct Server {
-    out: Sender,
-    count: Rc<Cell<u32>>,
-    room_count: Rc<Cell<u32>>,
-    room_counter: Rc<RefCell<HashMap<String, u8>>>,
-    room_nbs: Rc<RefCell<HashMap<String, u32>>>,
-    user_room: Rc<RefCell<HashMap<u32, String>>>,
-    user_isconnected: UserStatusRegistry,
-    room_users: RoomUsersRegistry,
-    id: u32,
-    child: Option<std::thread::JoinHandle<()>>,
-}
 
-impl Handler for Client {
-    fn on_open(&mut self, _: ws::Handshake) -> Result<()> {
-        Ok(())
-    }
-    fn on_message(&mut self, msg: Message) -> Result<()> {
-        //println!("msg {}", msg);
-        if let Ok(mut opt) = self.room_users.lock() {
-            //println!("  lock ok");
-            if let Some(ref mut hm) = *opt { //open option
-                //let  outs:std::vec::Vec<ws::Sender>=*mutex;
-                // let n = o.len();
-                //println!("confirm open n  ");
-                let room_users = hm.get(&self.room_nb);
-                if let Some(list) = room_users {
-                    //let lis:Vec<ws::Sender>=list.iter();
-                    for senderpair in list.iter() {
-                        let m = msg.to_string().to_owned();
-
-                        let id = senderpair.id;
-                        let out = &senderpair.out;
-                        println!("  send to {:?}", id);
-                        println!("    check status id {:?}", id);
-
-                        let hm = self.user_status.lock().unwrap();
-                        //if let  Ok(mut st) =  {
-                        if let Some(sta) = hm.get(&id) {
-                            //if let Some(ref mut sta) = *st {
-                            println!("    check status = {}", sta);
-                            //send
-                            if *sta {
-                                if let Ok(rr) = out.send(m) {
-                                    println!("      senc confirm ok {}", id);
-                                    /*if let Ok(_ping_) = out.pong(vec!(0)) {
-                                        println!("      ping ok {}", id);
-                                    } else {
-                                        println!("      ping closed {}", id);
-                                    }*/
-                                } else {
-                                    //  println!("  senc confirm err");
-                                }
-                            } else {}
-                        } else {
-                            println!("  check status no status");
-                        }
-                    }
-                } else {}
-                Ok(())
-            } else {
-                Ok(())
-            }
-        } else {
-            println!("err lock msg");
-            Ok(())
-        }
-    }
-}
-
-impl Server {
-    fn update_room_count(&mut self, room_id: String) {
-        println!("* Update room count");
-        let mut A = self.room_counter.borrow_mut();
-        let mut co = 0;
-        if let Some(rc) = A.get(&room_id) {
-            println!("Room has a count {}", rc);
-            co = *rc;
-        } else {
-            println!("Room has no count");
-        }
-        A.insert(room_id, co);
-    }
-    fn get_room_nb_by_id(&mut self, room_id: String) -> Option<u32> {
-        println!("* Get room nb by id");
-        let mut A = self.room_nbs.borrow_mut();
-
-        if let Some(rc) = A.get(&room_id) {
-            println!("Room nb for {} is {}", room_id, *rc);
-            Some(*rc)
-        } else {
-            println!("Room has no id");
-            None
-        }
-    }
-    fn set_room_nb_by_id(&mut self, room_id: String, room_nb: u32) {
-        println!("* Set room nb ");
-        let mut A = self.room_nbs.borrow_mut();
-        A.insert(room_id, room_nb);
-    }
-    fn update_user_room(&mut self, room_id: String) {
-        //update user room
-        println!("* Update user room");
-        let mut AA = self.user_room.borrow_mut();
-        if let None = AA.get(&self.id) {} else {}
-        AA.insert(self.id, room_id);
-    }
-    fn update_user_isconnected(&mut self) {
-        //update user room
-        println!("* Update user isconnected SET {} TRUE", self.id);
-        let mut AA = self.user_isconnected.lock().unwrap();
-        AA.insert(self.id, true);
-    }
-    fn decrement_room_count(&mut self) {
-        println!(" * decrement room_count");
-        let mut A = self.user_room.borrow_mut();
-        if let Some(room) = A.get(&self.id) {
-            let mut B = self.room_counter.borrow_mut();
-            let mut has_count = false;
-            let mut co = 0;
-            if let Some(count) = B.get(room) {
-                has_count = true;
-                co = *count;
-            }
-            if has_count {
-                B.insert(room.to_string(), co - 1);
-            }
-        }
-    }
-    fn update_user_setnotconnected(&mut self) {
-        println!("* Update user isconnected");
-        let mut AA = self.user_isconnected.lock().unwrap();
-        let mut exists = false;
-        if let Some(AAA) = AA.get(&self.id) {
-            exists = true;
-        } else {}
-        if exists {
-            AA.insert(self.id, false);
-        }
-    }
-    fn update_room_users(&mut self, room_nb: RoomNB) -> bool {
-        let mut room_user_in = self.room_users.lock().unwrap();
-        let mut exists = false;
-        if let Some(ref mut q) = *room_user_in {
-            if let Some(qq) = q.get_mut(&room_nb) {
-                exists = true
-            } else {
-                exists = false;
-            }
-            if (exists) {
-                let qq = q.get_mut(&room_nb).unwrap();
-                let p = Pair { id: self.id, out: self.out.clone() };
-                println!("add user {} to room {}", self.id, room_nb);
-                qq.push(p);
-            } else {
-                let p = Pair { id: self.id, out: self.out.clone() };
-                println!("create add user {} to room {}", self.id, room_nb);
-                q.insert(room_nb, vec!(p));
-            }
-        } else {}
-        !exists
-    }
-}
-
-impl Handler for Server {
-    fn on_open(&mut self, hs: ws::Handshake) -> Result<()> {
-        let path = hs.request.resource();
-        let pathsplit: Vec<&str> = path.split("/").collect();
-        let broker: &str = pathsplit[1];
-        let pair: &str = pathsplit[2];
-        let interval: &str = pathsplit[3];
-        println!("User {:?}/{:?} connection : broker {} symbol{} interval{}", self.id, self.count, broker, pair, interval);
-        println!("Update total count");
-        println!("USER ID {}", self.id);
-
-
-        let url = get_ws_url(broker, pair, interval);
-
-        let room_id = get_ws_id(broker, pair, interval).to_owned();
-        self.update_room_count(room_id);
-
-        let room_id = get_ws_id(broker, pair, interval).to_owned();
-        self.update_user_room(room_id);
-
-        self.update_user_isconnected();
-
-        let room_id = get_ws_id(broker, pair, interval).to_owned();
-        let room_nb_opt = self.get_room_nb_by_id(room_id);
-        let mut room_nb:RoomNB;
-        if let Some(room_nb_) = room_nb_opt {
-            room_nb=room_nb_;
-        } else {
-            self.room_count.set( self.room_count.get() + 1);
-            room_nb=self.room_count.get();
-            let room_id = get_ws_id(broker, pair, interval).to_owned();
-            self.set_room_nb_by_id(room_id, room_nb);
-
-        }
-
-        let id = self.id;
-
-        let isRoomCreation = self.update_room_users(room_nb);
-        println!("roomcreation? {}", isRoomCreation);
-        let user_id = self.count.get();
-
-
-        let id = Some(get_ws_id(broker, pair, interval).to_owned());
-
-        let w = self.user_isconnected.clone();
-        let ww = self.room_users.clone();
-        if !isRoomCreation {} else {
-            println!("  Try connect to exchange {}", url);
-            self.child = Some(thread::spawn(move || {
-                println!("  New thread {} ", url);
-                connect(url, |out2| Client {
-                    out: out2,
-                    room_id: id.clone(),
-                    room_users: ww.clone(),
-                    room_nb: room_nb.clone(),
-                    user_status: w.clone(),
-                }).unwrap();
-                println!("  New thread done ");
-            }));
-        }
-        println!("  Tried ");
-        self.count.set(self.count.get() + 1);
-        self.out.send("open done")
-    }
-
-    fn on_message(&mut self, msg: Message) -> Result<()> {
-        println!("msg {}", msg);
-        self.out.send(format!("You are user {} on {:?}", self.id, self.count))
-    }
-
-    fn on_close(&mut self, code: CloseCode, reason: &str) {
-        match code {
-            CloseCode::Normal => println!("The client is done with the connection."),
-            CloseCode::Away => {
-                println!("The client is leaving the site. Update room count");
-                self.update_user_setnotconnected();
-                //self.decrement_room_count();
-            }
-            CloseCode::Abnormal => println!("Closing handshake failed! Unable to obtain closing status from client."),
-            CloseCode::Protocol => println!("protocol"),
-            CloseCode::Unsupported => println!("Unsupported"),
-            CloseCode::Status => println!("Status"),
-            CloseCode::Abnormal => println!("Abnormal"),
-            CloseCode::Invalid => println!("Invalid"),
-            CloseCode::Protocol => println!("protocol"),
-            CloseCode::Policy => println!("Policy"),
-            CloseCode::Size => println!("Size"),
-            CloseCode::Extension => println!("Extension"),
-            CloseCode::Protocol => println!("protocol"),
-            CloseCode::Restart => println!("Restart"),
-            CloseCode::Again => println!("Again"),
-
-            _ => println!("CLOSE The client encountered an error: {}", reason),
-        }
-    }
-    fn on_error(&mut self, err: ws::Error) {
-        println!("The server encountered an error: {:?}", err);
-    }
-}
 
 fn main() {
-    static ws_port: i32 = 3014;
+    println!("Coinamics Server Websockets");
+    static WS_PORT: i32 = 3014;
+
+    //
+    // CREATE SHARED VARIABLES
+    //
     let count = Rc::new(Cell::new(0));
     let c: u32 = 0;
     let room_count = Rc::new(Cell::new(c));
 
-    let A: HashMap<String, u8> = HashMap::new(); // room id -> number of connected users in the room
-    let room_counter = Rc::new(RefCell::new(A));
+    let a: HashMap<String, u8> = HashMap::new(); // room id -> number of connected users in the room
+    let room_counter = Rc::new(RefCell::new(a));
 
-    let A: HashMap<String, RoomNB> = HashMap::new();// room id -> room nb
-    let room_nbs = Rc::new(RefCell::new(A));
+    let ab: HashMap<String, RoomNB> = HashMap::new();// room id -> room nb
+    let room_nbs = Rc::new(RefCell::new(ab));
 
-    let AA: HashMap<u32, String> = HashMap::new(); // user id -> room_id of his room
-    let user_room = Rc::new(RefCell::new(AA));
+    //let ac: HashMap<u32, String> = HashMap::new(); // user id -> room_id of his room
+    //let user_room = Rc::new(RefCell::new(ac));
 
+    let ad: HashMap<u32, bool> = HashMap::new();   // room id -> status connected true or false
+    let detailed_dispatch: UserStatusRegistry = Arc::new(Mutex::new(ad));
 
-    let AAC: HashMap<u32, bool> = HashMap::new();   // room id -> status connected true or false
-    let detailed_dispatch: UserStatusRegistry = Arc::new(Mutex::new(AAC));
+    let ae: HashMap<RoomNB, Vec<Pair>> = HashMap::new();  // room id -> vec of {user id and sender out}
+    let room_users: RoomUsersRegistry = Arc::new(Mutex::new(Some(ae)));
 
-
-    let AACC: HashMap<RoomNB, Vec<Pair>> = HashMap::new();  // room id -> vec of {user id and sender out}
-    let room_users: RoomUsersRegistry = Arc::new(Mutex::new(Some(AACC)));
-
-
-    if let Err(error) = listen("127.0.0.1:3014", |out| Server {
-        out: out,
-        //id: id_counter + 1,
-        id: count.get(),
-        child: None,
-        count: count.clone(),
-        room_count: room_count.clone(),
-        room_counter: room_counter.clone(),
-        room_nbs: room_nbs.clone(),
-        user_room: user_room.clone(),
-        user_isconnected: detailed_dispatch.clone(),
-
-        room_users: room_users.clone(),
-    }) {
-        println!("Failed to create WebSocket due to {:?}", error);
+    //LOAD SLL CERT & KEY AND LAUNCH
+    let args: Vec<String> = env::args().collect();
+    if args.len() < 3 {
+        println!("not enough arguments");
+        return;
     }
+    let certpath = &args[1].to_string();
+    let keypath = &args[2].to_string();
+
+    println!("CRT: {}", certpath);
+    println!("KEY: {}", keypath);
+    //READ FIRST FILE
+    let read = read_file(certpath);
+    match read {
+        Ok(read_) => {
+            //EXTRACT FIRST FILE
+            let crt = X509::from_pem(read_.as_ref());
+            match (crt) {
+                Ok(crt_) => {
+                    println!("read crt ok");
+                    //READ 2ND FILE
+                    let read2 = read_file(keypath);
+                    match read2 {
+                        Ok(read2_) => {
+                            //EXTRACT 2ND FILE
+                            let key = PKey::private_key_from_pem(read2_.as_ref());
+                            match (key) {
+                                Ok(key_) => {
+                                    println!("read key ok");
+                                    let acceptor = Rc::new(SslAcceptorBuilder::mozilla_intermediate(SslMethod::tls(), &key_, &crt_, std::iter::empty::<X509Ref>()).unwrap().build());
+                                    println!("acceptor ok");
+                                    let serv = ws::Builder::new().with_settings(ws::Settings { encrypt_server: true, ..ws::Settings::default() }).build(|out: ws::Sender| {
+                                        Server::Server {
+                                            ssl: acceptor.clone(),
+                                            out: out,
+                                            id: count.get(),
+                                            child: None,
+                                            count: count.clone(),
+                                            room_count: room_count.clone(),
+                                            room_counter: room_counter.clone(),
+                                            room_nbs: room_nbs.clone(),
+                                            //user_room: user_room.clone(),
+                                            user_isconnected: detailed_dispatch.clone(),
+                                            room_users: room_users.clone(),
+                                        }
+                                    });
+                                    println!("build ok");
+                                    match serv {
+                                        Ok(serv_) => {
+                                            println!("serv ok");
+                                            let lis = serv_.listen(format!("0.0.0.0:{}", WS_PORT));
+                                            match lis {
+                                                Ok(lis_) => {
+                                                    println!("listen ok")
+                                                }
+                                                Err(err) => { println!("err listen {:?}", err) }
+                                            }
+                                        }
+                                        Err(err) => { println!("cannot build serv {:?}", err) }
+                                    }
+                                }
+                                Err(err) => { println!("cannot extract key") }
+                            }
+                        }
+                        Err(err) => { println!("cannot read key") }
+                    }
+                }
+                Err(err) => { println!("cannot extract crt") }
+            }
+        }
+        Err(err) => { println!("cannot read crt") }
+    }
+    println!("Try listen {}", WS_PORT);
 }
 
-
-fn concat(path: &str, file: &str) -> String {
-    let mut owned_str: String = "".to_owned();
-    owned_str.push_str(path);
-    owned_str.push_str(file);
-    owned_str.push_str(".csv");
-    owned_str
+fn read_file(name: &str) -> std::io::Result<Vec<u8>> {
+    let mut file = try!(File::open(name));
+    let mut buf = Vec::new();
+    try!(file.read_to_end(&mut buf));
+    Ok(buf)
 }
 
 fn get_ws_url(broker: &str, pair: &str, interval: &str) -> String {
@@ -374,12 +161,13 @@ fn get_ws_url(broker: &str, pair: &str, interval: &str) -> String {
         s.push_str("@kline_");
         s.push_str(&interval);
         s
+    } else if broker == "hitbtc" {
+        "wss://api.hitbtc.com/api/2/ws".to_string()
     } else {
         " ".to_owned()
     }
 }
 
-static mut counter: usize = 0;
 
 fn get_ws_id(broker: &str, pair: &str, interval: &str) -> String {
     let mut s = broker.to_string();
@@ -390,8 +178,3 @@ fn get_ws_id(broker: &str, pair: &str, interval: &str) -> String {
     s
 }
 
-fn get_new_hash(id: u32, val: bool) -> HashMap<u32, bool> {
-    let mut A: HashMap<u32, bool> = HashMap::new();
-    A.insert(id, val);
-    A
-}
